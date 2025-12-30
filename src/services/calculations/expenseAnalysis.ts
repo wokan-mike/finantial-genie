@@ -1,0 +1,92 @@
+import { TransactionSchema } from '../database/schema';
+import { startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'date-fns';
+
+export interface CategoryExpense {
+  categoryId: string;
+  categoryName: string;
+  total: number;
+  percentage: number;
+  count: number;
+}
+
+export const analyzeExpensesByCategory = (
+  transactions: TransactionSchema[],
+  categories: { id: string; name: string }[],
+  year?: number,
+  month?: number
+): CategoryExpense[] => {
+  let filteredTransactions = transactions.filter(txn => txn.type === 'expense');
+
+  // Filter by date if provided
+  if (year && month) {
+    const monthStart = startOfMonth(new Date(year, month - 1));
+    const monthEnd = endOfMonth(new Date(year, month - 1));
+
+    filteredTransactions = filteredTransactions.filter(txn => {
+      const txnDate = parseISO(txn.date);
+      return isWithinInterval(txnDate, { start: monthStart, end: monthEnd });
+    });
+  }
+
+  // Calculate total expenses
+  const totalExpenses = filteredTransactions.reduce((sum, txn) => sum + txn.amount, 0);
+
+  // Group by category
+  const categoryMap = new Map<string, { total: number; count: number; name: string }>();
+
+  for (const txn of filteredTransactions) {
+    for (const tagId of txn.tags) {
+      const category = categories.find(cat => cat.id === tagId);
+      const categoryName = category?.name || 'Sin categoría';
+
+      const existing = categoryMap.get(tagId) || { total: 0, count: 0, name: categoryName };
+      existing.total += txn.amount;
+      existing.count += 1;
+      categoryMap.set(tagId, existing);
+    }
+  }
+
+  // Convert to array and calculate percentages
+  const results: CategoryExpense[] = Array.from(categoryMap.entries()).map(([categoryId, data]) => ({
+    categoryId,
+    categoryName: data.name,
+    total: data.total,
+    percentage: totalExpenses > 0 ? (data.total / totalExpenses) * 100 : 0,
+    count: data.count,
+  }));
+
+  // Sort by total descending
+  return results.sort((a, b) => b.total - a.total);
+};
+
+export const getTopCategories = (
+  categoryExpenses: CategoryExpense[],
+  limit: number = 5
+): CategoryExpense[] => {
+  return categoryExpenses.slice(0, limit);
+};
+
+export const compareMonthToMonth = (
+  currentMonth: CategoryExpense[],
+  previousMonth: CategoryExpense[]
+): Array<CategoryExpense & { change: number; changePercentage: number }> => {
+  const currentMap = new Map(currentMonth.map(cat => [cat.categoryId, cat]));
+  const previousMap = new Map(previousMonth.map(cat => [cat.categoryId, cat]));
+
+  const allCategories = new Set([...currentMap.keys(), ...previousMap.keys()]);
+
+  return Array.from(allCategories).map(categoryId => {
+    const current = currentMap.get(categoryId) || { total: 0, categoryName: '', percentage: 0, count: 0 };
+    const previous = previousMap.get(categoryId) || { total: 0, categoryName: '', percentage: 0, count: 0 };
+
+    const change = current.total - previous.total;
+    const changePercentage = previous.total > 0 ? (change / previous.total) * 100 : 0;
+
+    return {
+      ...current,
+      change,
+      changePercentage,
+    };
+  });
+};
+
