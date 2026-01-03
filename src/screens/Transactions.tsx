@@ -1,6 +1,8 @@
 import React, { useState } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, Platform } from 'react-native';
 import { useTransactions } from '../hooks/useTransactions';
+import { useCreditCards } from '../hooks/useCreditCards';
+import { useInstallments } from '../hooks/useInstallments';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { useTheme, getThemeColors } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
@@ -8,26 +10,90 @@ import { typography } from '../theme/typography';
 import { spacing } from '../theme/spacing';
 import MonthSelector from '../components/MonthSelector';
 import TransactionForm from '../components/forms/TransactionForm';
-import { startOfMonth, endOfMonth, isWithinInterval, parseISO } from 'date-fns';
+import { startOfMonth, endOfMonth, isWithinInterval, parseISO, isSameMonth } from 'date-fns';
+import { getPaymentsForCurrentMonth } from '../services/calculations/installmentCalculator';
+import { isInCurrentBillingCycle, getLastCutDate, getNextCutDate } from '../services/calculations/creditCardExpenses';
+import { TransactionSchema } from '../services/database/schema';
 
 export default function Transactions() {
   const { transactions, loading, deleteTransaction, refresh } = useTransactions();
+  const { creditCards } = useCreditCards();
+  const { payments } = useInstallments();
   const { theme, isDark } = useTheme();
   const themeColors = getThemeColors(theme);
   const { showToast } = useToast();
   const [filter, setFilter] = useState<'all' | 'income' | 'expense'>('all');
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [showForm, setShowForm] = useState(false);
+  const [editingTransaction, setEditingTransaction] = useState<typeof transactions[0] | null>(null);
 
-  const filteredTransactions = transactions.filter(txn => {
+  // Get installment payments for the selected month
+  const monthStart = startOfMonth(selectedMonth);
+  const monthEnd = endOfMonth(selectedMonth);
+  const monthPayments = payments.filter(payment => {
+    if (payment.status !== 'pending') return false;
+    const dueDate = parseISO(payment.dueDate);
+    return isWithinInterval(dueDate, { start: monthStart, end: monthEnd });
+  });
+
+  // Get the purchase for each payment to get credit card association
+  const { purchases } = useInstallments();
+  
+  // Convert installment payments to virtual transactions for display
+  const virtualTransactions: (TransactionSchema & { isInstallment?: boolean; paymentId?: string })[] = monthPayments.map(payment => {
+    const purchase = purchases.find(p => p.id === payment.installmentPurchaseId);
+    return {
+      id: `installment_${payment.id}`,
+      type: 'expense' as const,
+      amount: payment.amount,
+      description: `Pago a meses - Pago #${payment.paymentNumber}`,
+      tags: [],
+      date: payment.dueDate,
+      isRecurring: false,
+      creditCardId: purchase?.creditCardId || null,
+      createdAt: payment.createdAt,
+      updatedAt: payment.updatedAt,
+      isInstallment: true,
+      paymentId: payment.id,
+    };
+  });
+
+  // Combine real transactions with virtual installment transactions
+  const allTransactions = [...transactions, ...virtualTransactions];
+
+  const filteredTransactions = allTransactions.filter(txn => {
     // Filter by type
     if (filter !== 'all' && txn.type !== filter) return false;
     
     // Filter by month
-    const monthStart = startOfMonth(selectedMonth);
-    const monthEnd = endOfMonth(selectedMonth);
     const txnDate = parseISO(txn.date);
-    return isWithinInterval(txnDate, { start: monthStart, end: monthEnd });
+    const isInSelectedMonth = isWithinInterval(txnDate, { start: monthStart, end: monthEnd });
+    
+    // If transaction is associated with a credit card, check if it should be shown
+    if (txn.creditCardId && txn.type === 'expense' && !(txn as any).isInstallment) {
+      const card = creditCards.find(c => c.id === txn.creditCardId);
+      if (card) {
+        const transactionDate = parseISO(txn.date);
+        const today = new Date();
+        
+        // Get the cut date that applies to this transaction
+        // If viewing current month, only show transactions that have passed their cut date
+        const isCurrentMonth = isSameMonth(selectedMonth, today);
+        
+        if (isCurrentMonth) {
+          // For current month, only show if the cut date has passed
+          const lastCutDate = getLastCutDate(card, today);
+          // Show if transaction is after the last cut date (it's been billed)
+          return isInSelectedMonth && transactionDate >= lastCutDate;
+        } else {
+          // For past/future months, show all transactions in that month
+          return isInSelectedMonth;
+        }
+      }
+    }
+    
+    // For non-credit card transactions, show normally
+    return isInSelectedMonth;
   });
 
   const handleDelete = async (id: string, description: string) => {
@@ -93,6 +159,15 @@ export default function Transactions() {
   };
 
   const renderTransaction = ({ item }: { item: typeof transactions[0] }) => {
+    // Check if this is an installment payment
+    const isInstallment = (item as any).isInstallment === true;
+    
+    // Get credit card color if transaction is associated with a card
+    const associatedCard = item.creditCardId 
+      ? creditCards.find(card => card.id === item.creditCardId)
+      : null;
+    const cardColor = associatedCard?.color || null;
+
     const dynamicItemStyles = StyleSheet.create({
       transactionItem: {
         backgroundColor: themeColors.background,
@@ -107,6 +182,8 @@ export default function Transactions() {
         flexDirection: 'row',
         alignItems: 'center',
         position: 'relative',
+        borderLeftWidth: cardColor ? 4 : 0,
+        borderLeftColor: cardColor || 'transparent',
       },
       transactionDescription: {
         ...typography.body,
@@ -134,9 +211,27 @@ export default function Transactions() {
       <View style={dynamicItemStyles.transactionItem}>
         <View style={styles.transactionContent}>
           <View style={styles.transactionInfo}>
-            <Text style={dynamicItemStyles.transactionDescription}>{item.description}</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexWrap: 'wrap' }}>
+              <Text style={dynamicItemStyles.transactionDescription}>{item.description}</Text>
+              {isInstallment && (
+                <View style={{
+                  backgroundColor: themeColors.secondary + '30',
+                  paddingHorizontal: spacing.xs,
+                  paddingVertical: 2,
+                  borderRadius: 4,
+                }}>
+                  <Text style={{
+                    ...typography.caption,
+                    color: themeColors.secondary,
+                    fontWeight: '600',
+                  }}>
+                    A MESES
+                  </Text>
+                </View>
+              )}
+            </View>
             <Text style={dynamicItemStyles.transactionDate}>{formatDate(item.date)}</Text>
-            {item.tags.length > 0 && (
+            {!isInstallment && item.tags.length > 0 && (
               <View style={styles.tagsContainer}>
                 {item.tags.slice(0, 3).map(tag => (
                   <View key={tag} style={dynamicItemStyles.tag}>
@@ -156,20 +251,38 @@ export default function Transactions() {
             {formatCurrency(item.amount)}
           </Text>
         </View>
-        <TouchableOpacity
-          style={[styles.deleteButton, { backgroundColor: themeColors.error + '40' }]}
-          onPress={(e?: any) => {
-            if (e) {
-              e.stopPropagation();
-            }
-            console.log('Delete button pressed for:', item.id);
-            handleDelete(item.id, item.description);
-          }}
-          activeOpacity={0.7}
-          hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-        >
-          <Text style={styles.deleteButtonText}>🗑️</Text>
-        </TouchableOpacity>
+        {!isInstallment && (
+          <View style={styles.actionButtons}>
+            <TouchableOpacity
+              style={[styles.editButton, { backgroundColor: themeColors.primary + '40' }]}
+              onPress={(e?: any) => {
+                if (e) {
+                  e.stopPropagation();
+                }
+                setEditingTransaction(item);
+                setShowForm(true);
+              }}
+              activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Text style={styles.editButtonText}>✏️</Text>
+            </TouchableOpacity>
+            <TouchableOpacity
+              style={[styles.deleteButton, { backgroundColor: themeColors.error + '40' }]}
+              onPress={(e?: any) => {
+                if (e) {
+                  e.stopPropagation();
+                }
+                console.log('Delete button pressed for:', item.id);
+                handleDelete(item.id, item.description);
+              }}
+              activeOpacity={0.7}
+              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            >
+              <Text style={styles.deleteButtonText}>🗑️</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
     );
   };
@@ -294,14 +407,19 @@ export default function Transactions() {
         visible={showForm}
         animationType="slide"
         presentationStyle="pageSheet"
-        onRequestClose={() => setShowForm(false)}
+        onRequestClose={() => {
+          setShowForm(false);
+          setEditingTransaction(null);
+        }}
       >
         <TransactionForm
           onClose={() => {
             setShowForm(false);
+            setEditingTransaction(null);
             refresh();
           }}
           initialDate={selectedMonth}
+          transaction={editingTransaction || undefined}
         />
       </Modal>
     </View>
@@ -339,6 +457,23 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     alignItems: 'center',
     marginRight: spacing.sm,
+  },
+  actionButtons: {
+    flexDirection: 'row',
+    gap: spacing.xs,
+    alignItems: 'center',
+  },
+  editButton: {
+    padding: spacing.sm,
+    justifyContent: 'center',
+    alignItems: 'center',
+    borderRadius: 20,
+    width: 40,
+    height: 40,
+    zIndex: 10,
+  },
+  editButtonText: {
+    fontSize: 18,
   },
   deleteButton: {
     padding: spacing.sm,

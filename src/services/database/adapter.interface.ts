@@ -8,6 +8,7 @@ import {
   LiabilitySchema,
   InvestmentSchema,
   InvestmentOpportunitySchema,
+  CreditCardSchema,
 } from './schema';
 
 export interface TransactionRepository {
@@ -87,6 +88,15 @@ export interface InvestmentOpportunityRepository {
   delete(id: string): Promise<void>;
 }
 
+export interface CreditCardRepository {
+  getAll(): Promise<CreditCardSchema[]>;
+  getActive(): Promise<CreditCardSchema[]>;
+  getById(id: string): Promise<CreditCardSchema | null>;
+  create(data: Omit<CreditCardSchema, 'id' | 'createdAt' | 'updatedAt'>): Promise<CreditCardSchema>;
+  update(id: string, data: Partial<CreditCardSchema>): Promise<CreditCardSchema>;
+  delete(id: string): Promise<void>;
+}
+
 export interface DatabaseAdapter {
   transactions: TransactionRepository;
   categories: CategoryRepository;
@@ -97,6 +107,7 @@ export interface DatabaseAdapter {
   liabilities: LiabilityRepository;
   investments: InvestmentRepository;
   investmentOpportunities: InvestmentOpportunityRepository;
+  creditCards: CreditCardRepository;
   initialize(): Promise<void>;
 }
 

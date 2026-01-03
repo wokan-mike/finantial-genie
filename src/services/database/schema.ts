@@ -8,6 +8,7 @@ export interface TransactionSchema {
   description: string;
   date: string; // ISO date string
   isRecurring: boolean;
+  creditCardId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -41,6 +42,7 @@ export interface InstallmentPurchaseSchema {
   monthlyPayment: number;
   startDate: string;
   description: string | null;
+  creditCardId: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -104,3 +106,22 @@ export interface InvestmentOpportunitySchema {
   createdAt: string;
 }
 
+export interface CreditCardSchema {
+  id: string;
+  templateId: string; // ID from creditCards.ts templates
+  bank: string;
+  name: string; // Custom name for the card (e.g., "Mi Tarjeta BBVA")
+  last4Digits: string; // Last 4 digits of the card
+  color: string; // Color hex code for card identification
+  cutDate: number; // Day of month for cut date (1-31)
+  paymentDays: number; // Days after cut date to pay without interest
+  annualInterestRate: number;
+  moratoryInterestRate: number;
+  minPaymentPercentage: number;
+  creditLimit: number;
+  currentBalance: number;
+  availableCredit: number; // creditLimit - currentBalance
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}

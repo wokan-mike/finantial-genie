@@ -43,3 +43,5 @@ export const getThemeColors = (theme: ColorScheme) => {
   return theme === 'dark' ? colors.dark : colors.light;
 };
 
+
+

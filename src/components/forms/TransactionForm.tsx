@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -13,31 +13,41 @@ import { useTransactions } from '../../hooks/useTransactions';
 import { useCategories } from '../../hooks/useCategories';
 import { useToast } from '../../context/ToastContext';
 import { useTheme, getThemeColors } from '../../context/ThemeContext';
-import { formatCurrency } from '../../utils/formatters';
 import { typography } from '../../theme/typography';
 import { spacing } from '../../theme/spacing';
 import { TRANSACTION_TYPES } from '../../utils/constants';
-import { format } from 'date-fns';
 import CurrencyInput from './CurrencyInput';
+import DatePicker from '../DatePicker';
+import CreditCardPicker from '../CreditCardPicker';
+import { TransactionSchema } from '../../services/database/schema';
 
 interface TransactionFormProps {
   onClose: () => void;
   initialDate?: Date;
+  transaction?: TransactionSchema; // For editing
 }
 
-export default function TransactionForm({ onClose, initialDate }: TransactionFormProps) {
-  const { createTransaction } = useTransactions();
+export default function TransactionForm({ onClose, initialDate, transaction }: TransactionFormProps) {
+  const { createTransaction, updateTransaction } = useTransactions();
   const { categories } = useCategories();
   const { showToast } = useToast();
   const { theme } = useTheme();
   const themeColors = getThemeColors(theme);
-  const [type, setType] = useState<'income' | 'expense'>(TRANSACTION_TYPES.EXPENSE);
-  const [description, setDescription] = useState('');
-  const [amount, setAmount] = useState('');
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
-  const [date, setDate] = useState(initialDate || new Date());
-  const [isRecurring, setIsRecurring] = useState(false);
+  
+  const isEditing = !!transaction;
+  
+  const [type, setType] = useState<'income' | 'expense'>(
+    transaction?.type || TRANSACTION_TYPES.EXPENSE
+  );
+  const [description, setDescription] = useState(transaction?.description || '');
+  const [amount, setAmount] = useState(transaction?.amount.toString() || '');
+  const [selectedTags, setSelectedTags] = useState<string[]>(transaction?.tags || []);
+  const [date, setDate] = useState(
+    transaction ? new Date(transaction.date) : (initialDate || new Date())
+  );
+  const [isRecurring, setIsRecurring] = useState(transaction?.isRecurring || false);
   const [isPaid, setIsPaid] = useState(true);
+  const [creditCardId, setCreditCardId] = useState<string | null>(transaction?.creditCardId || null);
 
   const toggleTag = (tagId: string) => {
     setSelectedTags(prev =>
@@ -58,19 +68,35 @@ export default function TransactionForm({ onClose, initialDate }: TransactionFor
     }
 
     try {
-      await createTransaction({
-        type,
-        amount: amountNum,
-        description: description.trim(),
-        tags: selectedTags,
-        date: date.toISOString().split('T')[0],
-        isRecurring,
-      });
-
-      showToast('Transacción agregada correctamente', 'success');
+      if (isEditing && transaction) {
+        await updateTransaction(transaction.id, {
+          type,
+          amount: amountNum,
+          description: description.trim(),
+          tags: selectedTags,
+          date: date.toISOString().split('T')[0],
+          isRecurring,
+          creditCardId: type === TRANSACTION_TYPES.EXPENSE ? creditCardId : null,
+        });
+        showToast('Transacción actualizada correctamente', 'success');
+      } else {
+        await createTransaction({
+          type,
+          amount: amountNum,
+          description: description.trim(),
+          tags: selectedTags,
+          date: date.toISOString().split('T')[0],
+          isRecurring,
+          creditCardId: type === TRANSACTION_TYPES.EXPENSE ? creditCardId : null,
+        });
+        showToast('Transacción agregada correctamente', 'success');
+      }
       onClose();
     } catch (error) {
-      showToast('Error al agregar la transacción', 'error');
+      showToast(
+        isEditing ? 'Error al actualizar la transacción' : 'Error al agregar la transacción',
+        'error'
+      );
     }
   };
 
@@ -79,21 +105,38 @@ export default function TransactionForm({ onClose, initialDate }: TransactionFor
       flex: 1,
       backgroundColor: themeColors.background,
     },
+    content: {
+      padding: spacing.lg,
+      paddingBottom: spacing.xl * 2, // Extra space for button
+    },
+    header: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: spacing.lg,
+    },
     title: {
       ...typography.h1,
       color: themeColors.primary,
+      fontWeight: '700',
     },
     closeButton: {
-      width: 32,
-      height: 32,
-      borderRadius: 16,
+      width: 40,
+      height: 40,
+      borderRadius: 20,
       backgroundColor: themeColors.surface,
       justifyContent: 'center',
       alignItems: 'center',
+      borderWidth: 1,
+      borderColor: themeColors.border,
     },
     closeText: {
-      fontSize: 20,
+      fontSize: 24,
       color: themeColors.textSecondary,
+      lineHeight: 24,
+    },
+    section: {
+      marginBottom: spacing.lg,
     },
     label: {
       ...typography.body,
@@ -106,14 +149,18 @@ export default function TransactionForm({ onClose, initialDate }: TransactionFor
       backgroundColor: themeColors.surface,
       borderWidth: 1,
       borderColor: themeColors.border,
-      borderRadius: 8,
+      borderRadius: 12,
       padding: spacing.md,
       color: themeColors.text,
+    },
+    typeContainer: {
+      flexDirection: 'row',
+      gap: spacing.sm,
     },
     typeButton: {
       flex: 1,
       padding: spacing.md,
-      borderRadius: 8,
+      borderRadius: 12,
       backgroundColor: themeColors.surface,
       borderWidth: 2,
       borderColor: themeColors.border,
@@ -131,12 +178,10 @@ export default function TransactionForm({ onClose, initialDate }: TransactionFor
     typeButtonTextActive: {
       color: themeColors.background,
     },
-    dateText: {
-      ...typography.body,
-      color: themeColors.text,
-      padding: spacing.md,
-      backgroundColor: themeColors.surface,
-      borderRadius: 8,
+    tagsContainer: {
+      flexDirection: 'row',
+      flexWrap: 'wrap',
+      gap: spacing.sm,
     },
     tag: {
       paddingHorizontal: spacing.md,
@@ -152,185 +197,208 @@ export default function TransactionForm({ onClose, initialDate }: TransactionFor
       ...typography.bodySmall,
       color: themeColors.text,
     },
+    switchRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: spacing.sm,
+    },
     submitButton: {
       backgroundColor: themeColors.primary,
-      padding: spacing.md,
-      borderRadius: 8,
+      paddingVertical: spacing.lg,
+      paddingHorizontal: spacing.xl,
+      borderRadius: 16,
       alignItems: 'center',
-      marginTop: spacing.lg,
-      marginBottom: spacing.xl,
+      marginTop: spacing.xl,
+      shadowColor: themeColors.primary,
+      shadowOffset: { width: 0, height: 4 },
+      shadowOpacity: 0.3,
+      shadowRadius: 8,
+      elevation: 8,
+      borderWidth: 2,
+      borderColor: themeColors.primaryLight,
     },
     submitButtonText: {
-      ...typography.button,
+      ...typography.h4,
       color: themeColors.background,
+      fontWeight: '700',
+      letterSpacing: 0.5,
+    },
+    buttonContainer: {
+      position: 'absolute',
+      bottom: 0,
+      left: 0,
+      right: 0,
+      backgroundColor: themeColors.background,
+      padding: spacing.lg,
+      borderTopWidth: 1,
+      borderTopColor: themeColors.border,
+      shadowColor: '#000',
+      shadowOffset: { width: 0, height: -2 },
+      shadowOpacity: 0.1,
+      shadowRadius: 4,
+      elevation: 5,
     },
   });
 
   return (
-    <ScrollView style={dynamicStyles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={dynamicStyles.title}>Nueva Transacción</Text>
-        <TouchableOpacity onPress={onClose} style={dynamicStyles.closeButton}>
-          <Text style={dynamicStyles.closeText}>✕</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Tipo de transacción */}
-      <View style={styles.section}>
-        <Text style={dynamicStyles.label}>Tipo</Text>
-        <View style={styles.typeContainer}>
-          <TouchableOpacity
-            style={[
-              dynamicStyles.typeButton,
-              type === TRANSACTION_TYPES.INCOME && dynamicStyles.typeButtonActive,
-            ]}
-            onPress={() => setType(TRANSACTION_TYPES.INCOME)}
-          >
-            <Text
-              style={[
-                dynamicStyles.typeButtonText,
-                type === TRANSACTION_TYPES.INCOME && dynamicStyles.typeButtonTextActive,
-              ]}
-            >
-              Ingreso
-            </Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            style={[
-              dynamicStyles.typeButton,
-              type === TRANSACTION_TYPES.EXPENSE && dynamicStyles.typeButtonActive,
-            ]}
-            onPress={() => setType(TRANSACTION_TYPES.EXPENSE)}
-          >
-            <Text
-              style={[
-                dynamicStyles.typeButtonText,
-                type === TRANSACTION_TYPES.EXPENSE && dynamicStyles.typeButtonTextActive,
-              ]}
-            >
-              Gasto
-            </Text>
+    <View style={dynamicStyles.container}>
+      <ScrollView style={dynamicStyles.container} contentContainerStyle={dynamicStyles.content}>
+        <View style={dynamicStyles.header}>
+          <Text style={dynamicStyles.title}>
+            {isEditing ? 'Editar Transacción' : 'Nueva Transacción'}
+          </Text>
+          <TouchableOpacity onPress={onClose} style={dynamicStyles.closeButton}>
+            <Text style={dynamicStyles.closeText}>✕</Text>
           </TouchableOpacity>
         </View>
-      </View>
 
-      {/* Concepto */}
-      <View style={styles.section}>
-        <Text style={dynamicStyles.label}>Concepto</Text>
-        <TextInput
-          style={dynamicStyles.input}
-          value={description}
-          onChangeText={setDescription}
-          placeholder="Ej: Comida, Salario, etc."
-          placeholderTextColor={themeColors.textSecondary}
-        />
-      </View>
-
-      {/* Monto */}
-      <View style={styles.section}>
-        <Text style={dynamicStyles.label}>Monto</Text>
-        <CurrencyInput
-          value={amount}
-          onChangeText={setAmount}
-          placeholder="0.00"
-        />
-      </View>
-
-      {/* Fecha */}
-      <View style={styles.section}>
-        <Text style={dynamicStyles.label}>Fecha</Text>
-        <Text style={dynamicStyles.dateText}>{format(date, 'dd/MM/yyyy')}</Text>
-      </View>
-
-      {/* Categorías/Etiquetas */}
-      <View style={styles.section}>
-        <Text style={dynamicStyles.label}>Categorías</Text>
-        <View style={styles.tagsContainer}>
-          {categories.map(category => (
+        {/* Tipo de transacción */}
+        <View style={dynamicStyles.section}>
+          <Text style={dynamicStyles.label}>Tipo</Text>
+          <View style={dynamicStyles.typeContainer}>
             <TouchableOpacity
-              key={category.id}
               style={[
-                dynamicStyles.tag,
-                selectedTags.includes(category.id) && dynamicStyles.tagSelected,
-                { borderColor: category.color },
+                dynamicStyles.typeButton,
+                type === TRANSACTION_TYPES.INCOME && dynamicStyles.typeButtonActive,
               ]}
-              onPress={() => toggleTag(category.id)}
+              onPress={() => setType(TRANSACTION_TYPES.INCOME)}
             >
               <Text
                 style={[
-                  dynamicStyles.tagText,
-                  selectedTags.includes(category.id) && { color: category.color },
+                  dynamicStyles.typeButtonText,
+                  type === TRANSACTION_TYPES.INCOME && dynamicStyles.typeButtonTextActive,
                 ]}
               >
-                {category.icon} {category.name}
+                Ingreso
               </Text>
             </TouchableOpacity>
-          ))}
+            <TouchableOpacity
+              style={[
+                dynamicStyles.typeButton,
+                type === TRANSACTION_TYPES.EXPENSE && dynamicStyles.typeButtonActive,
+              ]}
+              onPress={() => setType(TRANSACTION_TYPES.EXPENSE)}
+            >
+              <Text
+                style={[
+                  dynamicStyles.typeButtonText,
+                  type === TRANSACTION_TYPES.EXPENSE && dynamicStyles.typeButtonTextActive,
+                ]}
+              >
+                Gasto
+              </Text>
+            </TouchableOpacity>
+          </View>
         </View>
-      </View>
 
-      {/* Recurrente */}
-      <View style={styles.section}>
-        <View style={styles.switchRow}>
-          <Text style={dynamicStyles.label}>Gasto recurrente</Text>
-          <Switch
-            value={isRecurring}
-            onValueChange={setIsRecurring}
-            trackColor={{ false: themeColors.border, true: themeColors.primary }}
-            thumbColor={themeColors.background}
+        {/* Concepto */}
+        <View style={dynamicStyles.section}>
+          <Text style={dynamicStyles.label}>Concepto</Text>
+          <TextInput
+            style={dynamicStyles.input}
+            value={description}
+            onChangeText={setDescription}
+            placeholder="Ej: Comida, Salario, etc."
+            placeholderTextColor={themeColors.textSecondary}
           />
         </View>
-      </View>
 
-      {/* Pagado (solo para gastos) */}
-      {type === TRANSACTION_TYPES.EXPENSE && (
-        <View style={styles.section}>
-          <View style={styles.switchRow}>
-            <Text style={dynamicStyles.label}>¿Ya se pagó?</Text>
+        {/* Monto */}
+        <View style={dynamicStyles.section}>
+          <Text style={dynamicStyles.label}>Monto</Text>
+          <CurrencyInput
+            value={amount}
+            onChangeText={setAmount}
+            placeholder="0.00"
+          />
+        </View>
+
+        {/* Fecha */}
+        <View style={dynamicStyles.section}>
+          <Text style={dynamicStyles.label}>Fecha</Text>
+          <DatePicker value={date} onChange={setDate} />
+        </View>
+
+        {/* Tarjeta de Crédito (solo para gastos) */}
+        {type === TRANSACTION_TYPES.EXPENSE && (
+          <View style={dynamicStyles.section}>
+            <Text style={dynamicStyles.label}>Tarjeta de Crédito (opcional)</Text>
+            <CreditCardPicker
+              value={creditCardId}
+              onChange={setCreditCardId}
+              placeholder="Seleccionar tarjeta"
+            />
+          </View>
+        )}
+
+        {/* Categorías/Etiquetas */}
+        <View style={dynamicStyles.section}>
+          <Text style={dynamicStyles.label}>Categorías</Text>
+          <View style={dynamicStyles.tagsContainer}>
+            {categories.map(category => (
+              <TouchableOpacity
+                key={category.id}
+                style={[
+                  dynamicStyles.tag,
+                  selectedTags.includes(category.id) && dynamicStyles.tagSelected,
+                  { borderColor: category.color },
+                ]}
+                onPress={() => toggleTag(category.id)}
+              >
+                <Text
+                  style={[
+                    dynamicStyles.tagText,
+                    selectedTags.includes(category.id) && { color: category.color },
+                  ]}
+                >
+                  {category.icon} {category.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        </View>
+
+        {/* Recurrente */}
+        <View style={dynamicStyles.section}>
+          <View style={dynamicStyles.switchRow}>
+            <Text style={dynamicStyles.label}>Gasto recurrente</Text>
             <Switch
-              value={isPaid}
-              onValueChange={setIsPaid}
-              trackColor={{ false: themeColors.border, true: themeColors.accent }}
+              value={isRecurring}
+              onValueChange={setIsRecurring}
+              trackColor={{ false: themeColors.border, true: themeColors.primary }}
               thumbColor={themeColors.background}
             />
           </View>
         </View>
-      )}
 
-      {/* Botón de guardar */}
-      <TouchableOpacity style={styles.submitButton} onPress={handleSubmit}>
-        <Text style={styles.submitButtonText}>Guardar</Text>
-      </TouchableOpacity>
-    </ScrollView>
+        {/* Pagado (solo para gastos) */}
+        {type === TRANSACTION_TYPES.EXPENSE && (
+          <View style={dynamicStyles.section}>
+            <View style={dynamicStyles.switchRow}>
+              <Text style={dynamicStyles.label}>¿Ya se pagó?</Text>
+              <Switch
+                value={isPaid}
+                onValueChange={setIsPaid}
+                trackColor={{ false: themeColors.border, true: themeColors.accent }}
+                thumbColor={themeColors.background}
+              />
+            </View>
+          </View>
+        )}
+
+        {/* Spacer for fixed button */}
+        <View style={{ height: 100 }} />
+      </ScrollView>
+
+      {/* Botón de guardar fijo en la parte inferior */}
+      <View style={dynamicStyles.buttonContainer}>
+        <TouchableOpacity style={dynamicStyles.submitButton} onPress={handleSubmit}>
+          <Text style={dynamicStyles.submitButtonText}>
+            {isEditing ? '💾 Guardar Cambios' : '✨ Guardar Transacción'}
+          </Text>
+        </TouchableOpacity>
+      </View>
+    </View>
   );
 }
-
-const styles = StyleSheet.create({
-  content: {
-    padding: spacing.md,
-  },
-  header: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.lg,
-  },
-  section: {
-    marginBottom: spacing.md,
-  },
-  typeContainer: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  tagsContainer: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: spacing.sm,
-  },
-  switchRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-});
-

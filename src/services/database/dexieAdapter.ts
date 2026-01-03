@@ -11,6 +11,7 @@ import {
   LiabilityRepository,
   InvestmentRepository,
   InvestmentOpportunityRepository,
+  CreditCardRepository,
 } from './adapter.interface';
 import {
   TransactionSchema,
@@ -22,6 +23,7 @@ import {
   LiabilitySchema,
   InvestmentSchema,
   InvestmentOpportunitySchema,
+  CreditCardSchema,
 } from './schema';
 
 class FinancialGenieDB extends Dexie {
@@ -34,9 +36,12 @@ class FinancialGenieDB extends Dexie {
   liabilities!: Table<LiabilitySchema>;
   investments!: Table<InvestmentSchema>;
   investmentOpportunities!: Table<InvestmentOpportunitySchema>;
+  creditCards!: Table<CreditCardSchema>;
 
   constructor() {
     super('FinancialGenieDB');
+    
+    // Version 1: Initial schema
     this.version(1).stores({
       transactions: 'id, date, type, *tags',
       categories: 'id',
@@ -47,6 +52,77 @@ class FinancialGenieDB extends Dexie {
       liabilities: 'id',
       investments: 'id',
       investmentOpportunities: 'id, isActive',
+    });
+    
+    // Version 2: Added credit cards and creditCardId fields
+    this.version(2).stores({
+      transactions: 'id, date, type, *tags, creditCardId',
+      categories: 'id',
+      fixedExpenses: 'id, startDate',
+      installmentPurchases: 'id, startDate, creditCardId',
+      installmentPayments: 'id, installmentPurchaseId, dueDate, status',
+      assets: 'id',
+      liabilities: 'id',
+      investments: 'id',
+      investmentOpportunities: 'id, isActive',
+      creditCards: 'id, isActive',
+    }).upgrade(async (tx) => {
+      // Migration: Add default values for new fields
+      const transactions = await tx.table('transactions').toCollection().toArray();
+      for (const txn of transactions) {
+        if (txn.creditCardId === undefined) {
+          await tx.table('transactions').update(txn.id, { creditCardId: null });
+        }
+      }
+      
+      const purchases = await tx.table('installmentPurchases').toCollection().toArray();
+      for (const purchase of purchases) {
+        if (purchase.creditCardId === undefined) {
+          await tx.table('installmentPurchases').update(purchase.id, { creditCardId: null });
+        }
+      }
+    });
+    
+    // Version 3: Add color field to credit cards
+    this.version(3).stores({
+      transactions: 'id, date, type, *tags, creditCardId',
+      categories: 'id',
+      fixedExpenses: 'id, startDate',
+      installmentPurchases: 'id, startDate, creditCardId',
+      installmentPayments: 'id, installmentPurchaseId, dueDate, status',
+      assets: 'id',
+      liabilities: 'id',
+      investments: 'id',
+      investmentOpportunities: 'id, isActive',
+      creditCards: 'id, isActive',
+    }).upgrade(async (tx) => {
+      // Migration: Add default color to existing credit cards
+      const creditCards = await tx.table('creditCards').toCollection().toArray();
+      const defaultColors = ['#3949ab', '#ff9800', '#4caf50', '#e91e63', '#9c27b0', '#00bcd4', '#ff5722', '#795548'];
+      let colorIndex = 0;
+      
+      for (const card of creditCards) {
+        if (!card.color || card.color === undefined) {
+          const color = defaultColors[colorIndex % defaultColors.length];
+          await tx.table('creditCards').update(card.id, { color });
+          colorIndex++;
+        }
+      }
+      
+      // Also ensure transactions and purchases have null for creditCardId if undefined
+      const transactions = await tx.table('transactions').toCollection().toArray();
+      for (const txn of transactions) {
+        if (txn.creditCardId === undefined) {
+          await tx.table('transactions').update(txn.id, { creditCardId: null });
+        }
+      }
+      
+      const purchases = await tx.table('installmentPurchases').toCollection().toArray();
+      for (const purchase of purchases) {
+        if (purchase.creditCardId === undefined) {
+          await tx.table('installmentPurchases').update(purchase.id, { creditCardId: null });
+        }
+      }
     });
   }
 }
@@ -463,6 +539,50 @@ class DexieInvestmentOpportunityRepository implements InvestmentOpportunityRepos
   }
 }
 
+class DexieCreditCardRepository implements CreditCardRepository {
+  constructor(private db: FinancialGenieDB) {}
+
+  async getAll(): Promise<CreditCardSchema[]> {
+    return this.db.creditCards.toArray();
+  }
+
+  async getActive(): Promise<CreditCardSchema[]> {
+    return this.db.creditCards.where('isActive').equals(true).toArray();
+  }
+
+  async getById(id: string): Promise<CreditCardSchema | null> {
+    return (await this.db.creditCards.get(id)) || null;
+  }
+
+  async create(data: Omit<CreditCardSchema, 'id' | 'createdAt' | 'updatedAt'>): Promise<CreditCardSchema> {
+    const now = new Date().toISOString();
+    const id = `cc_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const record: CreditCardSchema = {
+      ...data,
+      id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await this.db.creditCards.add(record);
+    return record;
+  }
+
+  async update(id: string, data: Partial<CreditCardSchema>): Promise<CreditCardSchema> {
+    const existing = await this.db.creditCards.get(id);
+    if (!existing) throw new Error('Credit card not found');
+    const updated = { ...existing, ...data, updatedAt: new Date().toISOString() };
+    await this.db.creditCards.put(updated);
+    return updated;
+  }
+
+  async delete(id: string): Promise<void> {
+    const count = await this.db.creditCards.where('id').equals(id).delete();
+    if (count === 0) {
+      throw new Error(`Credit card with id ${id} not found`);
+    }
+  }
+}
+
 export class DexieAdapter implements DatabaseAdapter {
   private db: FinancialGenieDB;
 
@@ -475,6 +595,7 @@ export class DexieAdapter implements DatabaseAdapter {
   liabilities: LiabilityRepository;
   investments: InvestmentRepository;
   investmentOpportunities: InvestmentOpportunityRepository;
+  creditCards: CreditCardRepository;
 
   constructor() {
     this.db = new FinancialGenieDB();
@@ -487,6 +608,7 @@ export class DexieAdapter implements DatabaseAdapter {
     this.liabilities = new DexieLiabilityRepository(this.db);
     this.investments = new DexieInvestmentRepository(this.db);
     this.investmentOpportunities = new DexieInvestmentOpportunityRepository(this.db);
+    this.creditCards = new DexieCreditCardRepository(this.db);
   }
 
   async initialize(): Promise<void> {
@@ -504,6 +626,45 @@ export class DexieAdapter implements DatabaseAdapter {
           isCustom: false,
         });
       }
+    }
+    
+    // Ensure existing records have proper default values for new fields
+    await this.migrateExistingData();
+  }
+  
+  private async migrateExistingData(): Promise<void> {
+    try {
+      // Ensure all transactions have creditCardId as null if undefined
+      const transactions = await this.transactions.getAll();
+      for (const txn of transactions) {
+        if ((txn as any).creditCardId === undefined) {
+          await this.transactions.update(txn.id, { creditCardId: null });
+        }
+      }
+      
+      // Ensure all installment purchases have creditCardId as null if undefined
+      const purchases = await this.installmentPurchases.getAll();
+      for (const purchase of purchases) {
+        if ((purchase as any).creditCardId === undefined) {
+          await this.installmentPurchases.update(purchase.id, { creditCardId: null });
+        }
+      }
+      
+      // Ensure all credit cards have a color
+      const creditCards = await this.creditCards.getAll();
+      const defaultColors = ['#3949ab', '#ff9800', '#4caf50', '#e91e63', '#9c27b0', '#00bcd4', '#ff5722', '#795548'];
+      let colorIndex = 0;
+      
+      for (const card of creditCards) {
+        if (!card.color || (card as any).color === undefined) {
+          const color = defaultColors[colorIndex % defaultColors.length];
+          await this.creditCards.update(card.id, { color });
+          colorIndex++;
+        }
+      }
+    } catch (error) {
+      console.error('Error migrating existing data:', error);
+      // Don't throw - migration errors shouldn't break the app
     }
   }
 }

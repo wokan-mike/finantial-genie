@@ -3,15 +3,22 @@ import { View, Text, StyleSheet, ScrollView } from 'react-native';
 import { useFinancialSummary } from '../hooks/useFinancialSummary';
 import { useExpenseAnalysis } from '../hooks/useExpenseAnalysis';
 import { useTheme, getThemeColors } from '../context/ThemeContext';
-import { formatCurrency } from '../utils/formatters';
+import { formatCurrency, formatDate } from '../utils/formatters';
 import { typography } from '../theme/typography';
 import { spacing } from '../theme/spacing';
+import { getYear, getMonth } from 'date-fns';
 
 export default function Dashboard() {
-  const { monthlySummary, netWorth, installmentTotalPending, loading } = useFinancialSummary();
-  const { categoryExpenses } = useExpenseAnalysis();
+  const { monthlySummary, netWorth, installmentTotalPending, currentMonthDebt, creditCardExpenses, totalCreditCardDebt, loading } = useFinancialSummary();
   const { theme } = useTheme();
   const themeColors = getThemeColors(theme);
+  
+  // Get current year and month
+  const currentYear = getYear(new Date());
+  const currentMonth = getMonth(new Date()) + 1; // getMonth returns 0-11, we need 1-12
+  
+  // Use expense analysis for current month only
+  const { categoryExpenses } = useExpenseAnalysis(currentYear, currentMonth);
 
   // Calculate available amount (income - expenses)
   const availableAmount = monthlySummary.totalIncome - monthlySummary.totalExpenses;
@@ -197,11 +204,70 @@ export default function Dashboard() {
         <Text style={dynamicStyles.netWorthValue}>{formatCurrency(netWorth)}</Text>
       </View>
 
-      {/* Pendiente a Meses */}
+      {/* Deuda del Mes Actual */}
+      {currentMonthDebt > 0 && (
+        <View style={dynamicStyles.card}>
+          <Text style={dynamicStyles.cardTitle}>Deuda del Mes Actual</Text>
+          <Text style={dynamicStyles.pendingValue}>{formatCurrency(currentMonthDebt)}</Text>
+          <Text style={[dynamicStyles.emptyText, { marginTop: spacing.sm }]}>
+            Pagos a meses vencidos este mes
+          </Text>
+        </View>
+      )}
+
+      {/* Pendiente Total a Meses */}
       {installmentTotalPending > 0 && (
         <View style={dynamicStyles.card}>
-          <Text style={dynamicStyles.cardTitle}>Pendiente a Meses</Text>
+          <Text style={dynamicStyles.cardTitle}>Pendiente Total a Meses</Text>
           <Text style={dynamicStyles.pendingValue}>{formatCurrency(installmentTotalPending)}</Text>
+        </View>
+      )}
+
+      {/* Gastos de Tarjetas de Crédito */}
+      {creditCardExpenses.length > 0 && (
+        <View style={dynamicStyles.card}>
+          <Text style={dynamicStyles.cardTitle}>Gastos de Tarjetas de Crédito</Text>
+          {creditCardExpenses
+            .filter(summary => summary.totalExpenses > 0)
+            .map((summary) => (
+              <View key={summary.cardId} style={dynamicStyles.categoryItem}>
+                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+                  <View
+                    style={{
+                      width: 4,
+                      height: 30,
+                      backgroundColor: summary.cardColor,
+                      borderRadius: 2,
+                      marginRight: spacing.sm,
+                    }}
+                  />
+                  <View style={{ flex: 1 }}>
+                    <Text style={dynamicStyles.categoryName}>
+                      {summary.cardName} ({summary.bank})
+                    </Text>
+                    <Text style={[dynamicStyles.emptyText, { marginTop: spacing.xs }]}>
+                      Vence: {formatDate(summary.paymentDueDate)} ({summary.daysUntilDue} días)
+                    </Text>
+                    {summary.normalExpenses > 0 && summary.installmentExpenses > 0 && (
+                      <Text style={[dynamicStyles.emptyText, { fontSize: 11 }]}>
+                        Gastos: {formatCurrency(summary.normalExpenses)} | A meses: {formatCurrency(summary.installmentExpenses)}
+                      </Text>
+                    )}
+                  </View>
+                  <Text style={[dynamicStyles.categoryAmount, { color: summary.isDueThisMonth ? themeColors.secondary : themeColors.text }]}>
+                    {formatCurrency(summary.totalExpenses)}
+                  </Text>
+                </View>
+              </View>
+            ))}
+          {totalCreditCardDebt > 0 && (
+            <View style={[dynamicStyles.balanceContainer, { marginTop: spacing.md }]}>
+              <Text style={dynamicStyles.balanceLabel}>Total a Pagar este Mes</Text>
+              <Text style={[dynamicStyles.balanceValue, { color: themeColors.secondary }]}>
+                {formatCurrency(totalCreditCardDebt)}
+              </Text>
+            </View>
+          )}
         </View>
       )}
     </ScrollView>

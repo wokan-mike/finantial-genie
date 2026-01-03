@@ -1,17 +1,21 @@
-import React from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Platform } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, FlatList, TouchableOpacity, Platform, Modal } from 'react-native';
 import { useInstallments } from '../hooks/useInstallments';
 import { useTheme, getThemeColors } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { typography } from '../theme/typography';
 import { spacing } from '../theme/spacing';
+import InstallmentPurchaseForm from '../components/forms/InstallmentPurchaseForm';
+import { InstallmentPurchaseSchema } from '../services/database/schema';
 
 export default function Installments() {
-  const { purchases, pendingPayments, totalPending, loading, markPaymentAsPaid, deletePurchase } = useInstallments();
+  const { purchases, pendingPayments, totalPending, loading, markPaymentAsPaid, deletePurchase, refresh } = useInstallments();
   const { theme } = useTheme();
   const themeColors = getThemeColors(theme);
   const { showToast } = useToast();
+  const [showForm, setShowForm] = useState(false);
+  const [editingPurchase, setEditingPurchase] = useState<InstallmentPurchaseSchema | null>(null);
 
   const handleDeletePurchase = async (id: string, name: string) => {
     const confirmMessage = `¿Estás seguro de eliminar "${name}"? Esto también eliminará todos los pagos relacionados.`;
@@ -174,6 +178,17 @@ export default function Installments() {
       color: themeColors.textSecondary,
       fontStyle: 'italic',
     },
+    addButton: {
+      paddingVertical: spacing.sm,
+      paddingHorizontal: spacing.md,
+      borderRadius: 12,
+      alignItems: 'center',
+      marginBottom: spacing.md,
+    },
+    addButtonText: {
+      ...typography.body,
+      fontWeight: '600',
+    },
   });
 
   const renderPurchase = ({ item }: { item: typeof purchases[0] }) => {
@@ -234,6 +249,17 @@ export default function Installments() {
     <View style={dynamicStyles.container}>
       <View style={dynamicStyles.header}>
         <Text style={dynamicStyles.title}>Compras a Meses</Text>
+        <TouchableOpacity
+          style={[dynamicStyles.addButton, { backgroundColor: themeColors.primary }]}
+          onPress={() => {
+            setEditingPurchase(null);
+            setShowForm(true);
+          }}
+        >
+          <Text style={[dynamicStyles.addButtonText, { color: themeColors.background }]}>
+            + Agregar
+          </Text>
+        </TouchableOpacity>
         <View style={dynamicStyles.summaryCard}>
           <Text style={dynamicStyles.summaryLabel}>Total Pendiente</Text>
           <Text style={dynamicStyles.summaryValue}>{formatCurrency(totalPending)}</Text>
@@ -251,6 +277,25 @@ export default function Installments() {
           </View>
         }
       />
+
+      <Modal
+        visible={showForm}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={() => {
+          setShowForm(false);
+          setEditingPurchase(null);
+        }}
+      >
+        <InstallmentPurchaseForm
+          onClose={() => {
+            setShowForm(false);
+            setEditingPurchase(null);
+            refresh();
+          }}
+          purchase={editingPurchase || undefined}
+        />
+      </Modal>
     </View>
   );
 }

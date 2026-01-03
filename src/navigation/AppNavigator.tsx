@@ -12,6 +12,7 @@ import Installments from '../screens/Installments';
 import ExpenseAnalysis from '../screens/ExpenseAnalysis';
 import Assets from '../screens/Assets';
 import Investments from '../screens/Investments';
+import CreditCards from '../screens/CreditCards';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -76,6 +77,13 @@ function MainTabs() {
         component={Investments}
         options={{
           tabBarLabel: 'Inversiones',
+        }}
+      />
+      <Tab.Screen 
+        name="CreditCards" 
+        component={CreditCards}
+        options={{
+          tabBarLabel: 'Tarjetas',
         }}
       />
     </Tab.Navigator>
