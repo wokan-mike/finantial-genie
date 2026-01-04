@@ -13,6 +13,7 @@ import ExpenseAnalysis from '../screens/ExpenseAnalysis';
 import Assets from '../screens/Assets';
 import Investments from '../screens/Investments';
 import CreditCards from '../screens/CreditCards';
+import Payments from '../screens/Payments';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -44,6 +45,13 @@ function MainTabs() {
           tabBarLabel: 'Inicio',
         }}
       />
+      <Tab.Screen
+        name="Payments"
+        component={Payments}
+        options={{
+          tabBarLabel: 'Pagos',
+        }}
+      />
       <Tab.Screen 
         name="Transactions" 
         component={Transactions}
@@ -56,6 +64,13 @@ function MainTabs() {
         component={Installments}
         options={{
           tabBarLabel: 'A Meses',
+        }}
+      />
+      <Tab.Screen 
+        name="CreditCards" 
+        component={CreditCards}
+        options={{
+          tabBarLabel: 'Tarjetas',
         }}
       />
       <Tab.Screen 
@@ -79,16 +94,9 @@ function MainTabs() {
           tabBarLabel: 'Inversiones',
         }}
       />
-      <Tab.Screen 
-        name="CreditCards" 
-        component={CreditCards}
-        options={{
-          tabBarLabel: 'Tarjetas',
-        }}
-      />
-    </Tab.Navigator>
-  );
-}
+          </Tab.Navigator>
+        );
+      }
 
 export default function AppNavigator() {
   return (
