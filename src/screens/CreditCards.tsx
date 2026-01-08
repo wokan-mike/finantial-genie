@@ -8,6 +8,9 @@ import { typography } from '../theme/typography';
 import { spacing } from '../theme/spacing';
 import CreditCardForm from '../components/forms/CreditCardForm';
 import { CreditCardSchema } from '../services/database/schema';
+import Card from '../components/common/Card';
+import { toTitleCase } from '../utils/textHelpers';
+import { isDesktop, getCardPadding } from '../utils/responsive';
 
 export default function CreditCards() {
   const { creditCards, loading, deleteCreditCard, refresh } = useCreditCards();
@@ -65,20 +68,6 @@ export default function CreditCards() {
       color: themeColors.primary,
       fontWeight: '700',
       marginBottom: spacing.md,
-    },
-    card: {
-      backgroundColor: themeColors.background,
-      borderRadius: 16,
-      padding: spacing.lg,
-      marginBottom: spacing.md,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.15,
-      shadowRadius: 8,
-      elevation: 5,
-      borderWidth: 1,
-      borderColor: themeColors.border,
-      position: 'relative',
     },
     cardHeader: {
       flexDirection: 'row',
@@ -147,7 +136,7 @@ export default function CreditCards() {
       marginBottom: spacing.xs,
     },
     creditValue: {
-      ...typography.h4,
+      fontSize: isDesktop ? 18 : 16,
       fontWeight: '700',
     },
     available: {
@@ -202,7 +191,7 @@ export default function CreditCards() {
       : 0;
 
     return (
-      <View style={dynamicStyles.card}>
+      <Card padding={getCardPadding()} marginBottom={spacing.lg}>
         <View style={dynamicStyles.cardHeader}>
           <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
             <View
@@ -284,10 +273,10 @@ export default function CreditCards() {
 
         {!item.isActive && (
           <View style={dynamicStyles.inactiveBadge}>
-            <Text style={dynamicStyles.inactiveText}>Inactiva</Text>
+            <Text style={dynamicStyles.inactiveText}>{toTitleCase('Inactiva')}</Text>
           </View>
         )}
-      </View>
+      </Card>
     );
   };
 

@@ -12,6 +12,7 @@ import {
   InvestmentRepository,
   InvestmentOpportunityRepository,
   CreditCardRepository,
+  RecurringExpenseRepository,
 } from './adapter.interface';
 import {
   TransactionSchema,
@@ -24,6 +25,7 @@ import {
   InvestmentSchema,
   InvestmentOpportunitySchema,
   CreditCardSchema,
+  RecurringExpenseSchema,
 } from './schema';
 
 class FinancialGenieDB extends Dexie {
@@ -37,6 +39,7 @@ class FinancialGenieDB extends Dexie {
   investments!: Table<InvestmentSchema>;
   investmentOpportunities!: Table<InvestmentOpportunitySchema>;
   creditCards!: Table<CreditCardSchema>;
+  recurringExpenses!: Table<RecurringExpenseSchema>;
 
   constructor() {
     super('FinancialGenieDB');
@@ -123,6 +126,21 @@ class FinancialGenieDB extends Dexie {
           await tx.table('installmentPurchases').update(purchase.id, { creditCardId: null });
         }
       }
+    });
+    
+    // Version 4: Add recurring expenses
+    this.version(4).stores({
+      transactions: 'id, date, type, *tags, creditCardId',
+      categories: 'id',
+      fixedExpenses: 'id, startDate',
+      installmentPurchases: 'id, startDate, creditCardId',
+      installmentPayments: 'id, installmentPurchaseId, dueDate, status',
+      assets: 'id',
+      liabilities: 'id',
+      investments: 'id',
+      investmentOpportunities: 'id, isActive',
+      creditCards: 'id, isActive',
+      recurringExpenses: 'id, startDate, isActive',
     });
   }
 }
@@ -583,6 +601,50 @@ class DexieCreditCardRepository implements CreditCardRepository {
   }
 }
 
+class DexieRecurringExpenseRepository implements RecurringExpenseRepository {
+  constructor(private db: FinancialGenieDB) {}
+
+  async getAll(): Promise<RecurringExpenseSchema[]> {
+    return this.db.recurringExpenses.toArray();
+  }
+
+  async getActive(): Promise<RecurringExpenseSchema[]> {
+    return this.db.recurringExpenses.where('isActive').equals(true).toArray();
+  }
+
+  async getById(id: string): Promise<RecurringExpenseSchema | null> {
+    return (await this.db.recurringExpenses.get(id)) || null;
+  }
+
+  async create(data: Omit<RecurringExpenseSchema, 'id' | 'createdAt' | 'updatedAt'>): Promise<RecurringExpenseSchema> {
+    const now = new Date().toISOString();
+    const id = `recur_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    const record: RecurringExpenseSchema = {
+      ...data,
+      id,
+      createdAt: now,
+      updatedAt: now,
+    };
+    await this.db.recurringExpenses.add(record);
+    return record;
+  }
+
+  async update(id: string, data: Partial<RecurringExpenseSchema>): Promise<RecurringExpenseSchema> {
+    const existing = await this.db.recurringExpenses.get(id);
+    if (!existing) throw new Error('Recurring expense not found');
+    const updated = { ...existing, ...data, updatedAt: new Date().toISOString() };
+    await this.db.recurringExpenses.put(updated);
+    return updated;
+  }
+
+  async delete(id: string): Promise<void> {
+    const count = await this.db.recurringExpenses.where('id').equals(id).delete();
+    if (count === 0) {
+      throw new Error(`Recurring expense with id ${id} not found`);
+    }
+  }
+}
+
 export class DexieAdapter implements DatabaseAdapter {
   private db: FinancialGenieDB;
 
@@ -596,6 +658,7 @@ export class DexieAdapter implements DatabaseAdapter {
   investments: InvestmentRepository;
   investmentOpportunities: InvestmentOpportunityRepository;
   creditCards: CreditCardRepository;
+  recurringExpenses: RecurringExpenseRepository;
 
   constructor() {
     this.db = new FinancialGenieDB();
@@ -609,6 +672,7 @@ export class DexieAdapter implements DatabaseAdapter {
     this.investments = new DexieInvestmentRepository(this.db);
     this.investmentOpportunities = new DexieInvestmentOpportunityRepository(this.db);
     this.creditCards = new DexieCreditCardRepository(this.db);
+    this.recurringExpenses = new DexieRecurringExpenseRepository(this.db);
   }
 
   async initialize(): Promise<void> {

@@ -1,11 +1,14 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Platform } from 'react-native';
 import { useExpenseAnalysis } from '../hooks/useExpenseAnalysis';
 import { useTheme, getThemeColors } from '../context/ThemeContext';
 import { formatCurrency } from '../utils/formatters';
 import { typography } from '../theme/typography';
 import { spacing } from '../theme/spacing';
 import { getYear, getMonth } from 'date-fns';
+import Card from '../components/common/Card';
+import { toTitleCase } from '../utils/textHelpers';
+import { isDesktop, getCardPadding, getContainerMaxWidth } from '../utils/responsive';
 
 export default function ExpenseAnalysis() {
   const currentYear = getYear(new Date());
@@ -31,26 +34,21 @@ export default function ExpenseAnalysis() {
       ...typography.body,
       color: themeColors.textSecondary,
     },
-    card: {
-      backgroundColor: themeColors.background,
-      borderRadius: 16,
-      padding: spacing.lg,
-      marginBottom: spacing.md,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.15,
-      shadowRadius: 8,
-      elevation: 5,
-      borderWidth: 1,
-      borderColor: themeColors.border,
+    contentWrapper: {
+      maxWidth: getContainerMaxWidth(),
+      width: '100%',
+      alignSelf: 'center',
+      ...(Platform.OS === 'web' && {
+        paddingLeft: isDesktop ? spacing.xl : spacing.md,
+        paddingRight: isDesktop ? spacing.xl : spacing.md,
+      }),
     },
     cardTitle: {
       ...typography.h4,
-      color: themeColors.textSecondary,
+      color: themeColors.text,
       marginBottom: spacing.md,
       fontWeight: '600',
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
+      fontSize: isDesktop ? 18 : 16,
     },
     categoryItem: {
       marginBottom: spacing.md,
@@ -83,9 +81,10 @@ export default function ExpenseAnalysis() {
       fontWeight: '600',
     },
     categoryAmount: {
-      ...typography.h4,
+      fontSize: isDesktop ? 20 : 18,
       color: themeColors.text,
       fontWeight: '700',
+      letterSpacing: -0.01,
     },
     progressBarContainer: {
       height: 10,
@@ -147,16 +146,21 @@ export default function ExpenseAnalysis() {
   }
 
   return (
-    <ScrollView style={dynamicStyles.container} contentContainerStyle={styles.content}>
-      <View style={styles.header}>
-        <Text style={dynamicStyles.title}>Análisis de Gastos</Text>
-        <Text style={dynamicStyles.subtitle}>
-          Total del mes: {formatCurrency(totalExpenses)}
-        </Text>
-      </View>
+    <ScrollView 
+      style={dynamicStyles.container} 
+      contentContainerStyle={styles.content}
+      showsVerticalScrollIndicator={Platform.OS === 'web'}
+    >
+      <View style={dynamicStyles.contentWrapper}>
+        <View style={styles.header}>
+          <Text style={dynamicStyles.title}>Análisis de Gastos</Text>
+          <Text style={dynamicStyles.subtitle}>
+            Total del mes: {formatCurrency(totalExpenses)}
+          </Text>
+        </View>
 
-      <View style={dynamicStyles.card}>
-        <Text style={dynamicStyles.cardTitle}>Top 5 Categorías</Text>
+        <Card padding={getCardPadding()} marginBottom={spacing.lg}>
+          <Text style={dynamicStyles.cardTitle}>{toTitleCase('Top 5 Categorías')}</Text>
         {topCategories.map((category, index) => (
           <View key={category.categoryId} style={dynamicStyles.categoryItem}>
             <View style={dynamicStyles.categoryHeader}>
@@ -177,10 +181,10 @@ export default function ExpenseAnalysis() {
             <Text style={dynamicStyles.categoryPercentage}>{category.percentage.toFixed(1)}%</Text>
           </View>
         ))}
-      </View>
+        </Card>
 
-      <View style={dynamicStyles.card}>
-        <Text style={dynamicStyles.cardTitle}>Todas las Categorías</Text>
+        <Card padding={getCardPadding()} marginBottom={spacing.lg}>
+          <Text style={dynamicStyles.cardTitle}>{toTitleCase('Todas las Categorías')}</Text>
         {categoryExpenses.map(category => (
           <View key={category.categoryId} style={dynamicStyles.categoryRow}>
             <Text style={dynamicStyles.categoryNameSmall}>{category.categoryName}</Text>
@@ -191,8 +195,9 @@ export default function ExpenseAnalysis() {
           </View>
         ))}
         {categoryExpenses.length === 0 && (
-          <Text style={dynamicStyles.emptyText}>No hay gastos registrados este mes</Text>
+            <Text style={dynamicStyles.emptyText}>No hay gastos registrados este mes</Text>
         )}
+        </Card>
       </View>
     </ScrollView>
   );

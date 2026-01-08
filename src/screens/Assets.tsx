@@ -7,6 +7,9 @@ import { calculateNetWorth, calculateTotalAssets, calculateTotalLiabilities } fr
 import { formatCurrency } from '../utils/formatters';
 import { typography } from '../theme/typography';
 import { spacing } from '../theme/spacing';
+import Card from '../components/common/Card';
+import { toTitleCase } from '../utils/textHelpers';
+import { isDesktop, getCardPadding } from '../utils/responsive';
 
 export default function Assets() {
   const { assets, liabilities, loading, deleteAsset, deleteLiability } = useAssets();
@@ -75,24 +78,16 @@ export default function Assets() {
       fontWeight: '700',
       marginBottom: spacing.md,
     },
-    summaryCard: {
-      backgroundColor: themeColors.primary + '20',
-      padding: spacing.lg,
-      borderRadius: 16,
-      alignItems: 'center',
-      borderWidth: 1,
-      borderColor: themeColors.primary + '40',
-    },
     summaryLabel: {
       ...typography.bodySmall,
       color: themeColors.textSecondary,
       marginBottom: spacing.xs,
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
+      fontWeight: '400',
     },
     summaryValue: {
-      ...typography.h1,
+      fontSize: isDesktop ? 36 : 32,
       fontWeight: '700',
+      letterSpacing: -0.02,
     },
     positive: {
       color: themeColors.accent,
@@ -109,21 +104,6 @@ export default function Assets() {
       color: themeColors.text,
       marginBottom: spacing.md,
       fontWeight: '600',
-    },
-    itemCard: {
-      backgroundColor: themeColors.background,
-      borderRadius: 16,
-      padding: spacing.lg,
-      marginBottom: spacing.md,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.15,
-      shadowRadius: 8,
-      elevation: 5,
-      flexDirection: 'row',
-      alignItems: 'center',
-      borderWidth: 1,
-      borderColor: themeColors.border,
     },
     itemContent: {
       flex: 1,
@@ -179,7 +159,7 @@ export default function Assets() {
   });
 
   const renderAsset = ({ item }: { item: typeof assets[0] }) => (
-    <View style={dynamicStyles.itemCard}>
+    <Card padding={getCardPadding()} marginBottom={spacing.lg}>
       <View style={dynamicStyles.itemContent}>
         <View style={dynamicStyles.itemHeader}>
           <Text style={dynamicStyles.itemName}>{item.name}</Text>
@@ -188,18 +168,18 @@ export default function Assets() {
         <Text style={dynamicStyles.itemType}>{item.type}</Text>
       </View>
       <TouchableOpacity
-        style={dynamicStyles.deleteButton}
+        style={[dynamicStyles.deleteButton, { position: 'absolute', top: spacing.sm, right: spacing.sm }]}
         onPress={() => handleDeleteAsset(item.id, item.name)}
         activeOpacity={0.7}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
         <Text style={dynamicStyles.deleteButtonText}>🗑️</Text>
       </TouchableOpacity>
-    </View>
+    </Card>
   );
 
   const renderLiability = ({ item }: { item: typeof liabilities[0] }) => (
-    <View style={[dynamicStyles.itemCard, dynamicStyles.liabilityCard]}>
+    <Card padding={getCardPadding()} marginBottom={spacing.lg}>
       <View style={dynamicStyles.itemContent}>
         <View style={dynamicStyles.itemHeader}>
           <Text style={dynamicStyles.itemName}>{item.name}</Text>
@@ -210,14 +190,14 @@ export default function Assets() {
         <Text style={dynamicStyles.itemType}>{item.type}</Text>
       </View>
       <TouchableOpacity
-        style={dynamicStyles.deleteButton}
+        style={[dynamicStyles.deleteButton, { position: 'absolute', top: spacing.sm, right: spacing.sm }]}
         onPress={() => handleDeleteLiability(item.id, item.name)}
         activeOpacity={0.7}
         hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
       >
         <Text style={dynamicStyles.deleteButtonText}>🗑️</Text>
       </TouchableOpacity>
-    </View>
+    </Card>
   );
 
   if (loading) {
@@ -232,12 +212,12 @@ export default function Assets() {
     <View style={dynamicStyles.container}>
       <View style={dynamicStyles.header}>
         <Text style={dynamicStyles.title}>Patrimonio</Text>
-        <View style={dynamicStyles.summaryCard}>
-          <Text style={dynamicStyles.summaryLabel}>Patrimonio Neto</Text>
+        <Card padding={getCardPadding()} marginBottom={spacing.lg}>
+          <Text style={dynamicStyles.summaryLabel}>{toTitleCase('Patrimonio Neto')}</Text>
           <Text style={[dynamicStyles.summaryValue, netWorth >= 0 ? dynamicStyles.positive : dynamicStyles.negative]}>
             {formatCurrency(netWorth)}
           </Text>
-        </View>
+        </Card>
       </View>
 
       <View style={dynamicStyles.section}>

@@ -3,6 +3,7 @@ import { getDatabase } from '../services/database/adapter';
 import { useTransactions } from './useTransactions';
 import { useCreditCards } from './useCreditCards';
 import { useInstallments } from './useInstallments';
+import { useRecurringExpenses } from './useRecurringExpenses';
 import { calculatePaymentsForMonth, PaymentSummary } from '../services/calculations/payments';
 import { getYear, getMonth } from 'date-fns';
 
@@ -10,6 +11,7 @@ export const usePayments = (year?: number, month?: number) => {
   const { transactions } = useTransactions();
   const { creditCards } = useCreditCards();
   const { purchases, payments } = useInstallments();
+  const { expenses: recurringExpenses } = useRecurringExpenses();
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [paymentSummary, setPaymentSummary] = useState<PaymentSummary | null>(null);
@@ -26,6 +28,7 @@ export const usePayments = (year?: number, month?: number) => {
           payments,
           purchases,
           creditCards,
+          recurringExpenses,
           currentYear,
           currentMonth
         );
@@ -41,7 +44,7 @@ export const usePayments = (year?: number, month?: number) => {
     };
 
     loadPayments();
-  }, [transactions, payments, purchases, creditCards, year, month]);
+  }, [transactions, payments, purchases, creditCards, recurringExpenses, year, month]);
 
   return {
     paymentSummary,

@@ -4,6 +4,7 @@ import AppNavigator from './src/navigation/AppNavigator';
 import { getDatabase } from './src/services/database/adapter';
 import { ToastProvider } from './src/context/ToastContext';
 import { ThemeProvider, useTheme, getThemeColors } from './src/context/ThemeContext';
+import './src/styles/global';
 
 function AppContent() {
   const [isLoading, setIsLoading] = useState(true);

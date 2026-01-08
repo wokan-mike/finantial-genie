@@ -1,43 +1,66 @@
+import { Platform } from 'react-native';
+import { isDesktop, isTablet, isMobile } from '../utils/responsive';
+
+// Responsive typography system
+const getResponsiveFontSize = (mobile: number, tablet?: number, desktop?: number): number => {
+  if (Platform.OS === 'web') {
+    if (isDesktop && desktop) return desktop;
+    if (isTablet && tablet) return tablet;
+  }
+  return mobile;
+};
+
 export const typography = {
   h1: {
-    fontSize: 32,
+    fontSize: getResponsiveFontSize(28, 32, 40),
     fontWeight: '700' as const,
-    lineHeight: 40,
+    lineHeight: getResponsiveFontSize(36, 40, 48),
+    letterSpacing: -0.5,
   },
   h2: {
-    fontSize: 24,
+    fontSize: getResponsiveFontSize(24, 28, 32),
     fontWeight: '600' as const,
-    lineHeight: 32,
+    lineHeight: getResponsiveFontSize(32, 36, 40),
+    letterSpacing: -0.3,
   },
   h3: {
-    fontSize: 20,
+    fontSize: getResponsiveFontSize(20, 22, 24),
     fontWeight: '600' as const,
-    lineHeight: 28,
+    lineHeight: getResponsiveFontSize(28, 30, 32),
+    letterSpacing: -0.2,
   },
   h4: {
-    fontSize: 18,
+    fontSize: getResponsiveFontSize(18, 20, 22),
     fontWeight: '600' as const,
-    lineHeight: 24,
+    lineHeight: getResponsiveFontSize(24, 26, 28),
   },
   body: {
-    fontSize: 16,
+    fontSize: getResponsiveFontSize(16, 16, 16),
     fontWeight: '400' as const,
-    lineHeight: 24,
+    lineHeight: getResponsiveFontSize(24, 24, 24),
   },
   bodySmall: {
-    fontSize: 14,
+    fontSize: getResponsiveFontSize(14, 14, 14),
     fontWeight: '400' as const,
-    lineHeight: 20,
+    lineHeight: getResponsiveFontSize(20, 20, 20),
   },
   caption: {
-    fontSize: 12,
+    fontSize: getResponsiveFontSize(12, 12, 12),
     fontWeight: '400' as const,
-    lineHeight: 16,
+    lineHeight: getResponsiveFontSize(16, 16, 16),
   },
   button: {
-    fontSize: 16,
+    fontSize: getResponsiveFontSize(16, 16, 16),
     fontWeight: '600' as const,
-    lineHeight: 24,
+    lineHeight: getResponsiveFontSize(24, 24, 24),
+    letterSpacing: 0.5,
+  },
+  // New responsive utilities
+  display: {
+    fontSize: getResponsiveFontSize(36, 48, 56),
+    fontWeight: '700' as const,
+    lineHeight: getResponsiveFontSize(44, 56, 64),
+    letterSpacing: -1,
   },
 };
 

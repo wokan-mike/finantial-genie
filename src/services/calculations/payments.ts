@@ -1,14 +1,25 @@
-import { TransactionSchema, InstallmentPaymentSchema, InstallmentPurchaseSchema, CreditCardSchema } from '../database/schema';
-import { parseISO, startOfMonth, endOfMonth, isWithinInterval, getYear, getMonth, addDays, subMonths, isAfter, isBefore } from 'date-fns';
+import { TransactionSchema, InstallmentPaymentSchema, InstallmentPurchaseSchema, CreditCardSchema, RecurringExpenseSchema } from '../database/schema';
+import { parseISO, startOfMonth, endOfMonth, isWithinInterval, getYear, getMonth, addDays, subMonths, isAfter, isBefore, setDate } from 'date-fns';
 import { getPaymentDueDate, getLastCutDate, getNextCutDate } from './creditCardExpenses';
 import { getMonthlyIncome } from './biweeklyAvailability';
+
+export interface RecurringExpensePayment {
+  expenseId: string;
+  expenseName: string;
+  expenseType: RecurringExpenseSchema['type'];
+  amount: number;
+  dueDate: Date;
+  daysUntilDue: number;
+}
 
 export interface PaymentSummary {
   monthIncome: number;
   creditCardPayments: CreditCardPayment[];
   installmentPayments: InstallmentPayment[];
+  recurringExpensePayments: RecurringExpensePayment[];
   totalCreditCardPayments: number;
   totalInstallmentPayments: number;
+  totalRecurringExpensePayments: number;
   totalPayments: number;
   availableAfterPayments: number;
 }
@@ -42,6 +53,7 @@ export const calculatePaymentsForMonth = (
   installmentPayments: InstallmentPaymentSchema[],
   installmentPurchases: InstallmentPurchaseSchema[],
   creditCards: CreditCardSchema[],
+  recurringExpenses: RecurringExpenseSchema[],
   year: number,
   month: number
 ): PaymentSummary => {
@@ -176,17 +188,66 @@ export const calculatePaymentsForMonth = (
       };
     });
   
+  // Calculate recurring expense payments due this month
+  const recurringExpensePayments: RecurringExpensePayment[] = [];
+  
+  for (const expense of recurringExpenses.filter(e => e.isActive)) {
+    const startDate = parseISO(expense.startDate);
+    const startYear = getYear(startDate);
+    const startMonth = getMonth(startDate) + 1;
+    
+    // Check if expense has started
+    if (startYear > year || (startYear === year && startMonth > month)) {
+      continue; // Expense hasn't started yet
+    }
+    
+    // Check if expense has ended
+    if (expense.endDate) {
+      const endDate = parseISO(expense.endDate);
+      const endYear = getYear(endDate);
+      const endMonth = getMonth(endDate) + 1;
+      
+      if (endYear < year || (endYear === year && endMonth < month)) {
+        continue; // Expense has ended
+      }
+    }
+    
+    // Calculate payment due date for this month
+    // Use the payment day, but if it's beyond the last day of the month, use the last day
+    const lastDayOfMonth = endOfMonth(new Date(year, month - 1)).getDate();
+    const paymentDay = Math.min(expense.paymentDay, lastDayOfMonth);
+    const dueDate = setDate(new Date(year, month - 1), paymentDay);
+    dueDate.setHours(23, 59, 59, 999);
+    
+    // Only include if due date is within the month
+    if (isWithinInterval(dueDate, { start: monthStart, end: monthEnd })) {
+      const daysUntilDue = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
+      
+      recurringExpensePayments.push({
+        expenseId: expense.id,
+        expenseName: expense.name,
+        expenseType: expense.type,
+        amount: expense.monthlyAmount,
+        dueDate,
+        daysUntilDue,
+      });
+    }
+  }
+  
   const totalCreditCardPayments = creditCardPayments.reduce((sum, p) => sum + p.amount, 0);
   const totalInstallmentPayments = installmentPaymentsWithoutCard.reduce((sum, p) => sum + p.amount, 0);
-  const totalPayments = totalCreditCardPayments + totalInstallmentPayments;
+  const totalRecurringExpensePayments = recurringExpensePayments.reduce((sum, p) => sum + p.amount, 0);
+  const totalPayments = totalCreditCardPayments + totalInstallmentPayments + totalRecurringExpensePayments;
   const availableAfterPayments = monthIncome - totalPayments;
   
   return {
     monthIncome,
     creditCardPayments,
     installmentPayments: installmentPaymentsWithoutCard,
+    recurringExpensePayments,
     totalCreditCardPayments,
     totalInstallmentPayments,
+    totalRecurringExpensePayments,
     totalPayments,
     availableAfterPayments,
   };

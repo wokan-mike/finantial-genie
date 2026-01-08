@@ -7,6 +7,9 @@ import { calculateTotalPortfolioValue, calculateTotalPortfolioReturn } from '../
 import { formatCurrency } from '../utils/formatters';
 import { typography } from '../theme/typography';
 import { spacing } from '../theme/spacing';
+import Card from '../components/common/Card';
+import { toTitleCase } from '../utils/textHelpers';
+import { isDesktop, getCardPadding } from '../utils/responsive';
 
 export default function Investments() {
   const { investments, opportunities, loading, deleteInvestment } = useInvestments();
@@ -48,26 +51,18 @@ export default function Investments() {
       fontWeight: '700',
       marginBottom: spacing.md,
     },
-    summaryCard: {
-      backgroundColor: themeColors.primary + '20',
-      padding: spacing.lg,
-      borderRadius: 16,
-      alignItems: 'center',
-      borderWidth: 1,
-      borderColor: themeColors.primary + '40',
-    },
     summaryLabel: {
       ...typography.bodySmall,
       color: themeColors.textSecondary,
       marginBottom: spacing.xs,
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
+      fontWeight: '400',
     },
     summaryValue: {
-      ...typography.h1,
+      fontSize: isDesktop ? 36 : 32,
       color: themeColors.primary,
       marginBottom: spacing.xs,
       fontWeight: '700',
+      letterSpacing: -0.02,
     },
     summaryReturn: {
       ...typography.h4,
@@ -87,21 +82,6 @@ export default function Investments() {
       color: themeColors.text,
       marginBottom: spacing.md,
       fontWeight: '600',
-    },
-    investmentCard: {
-      backgroundColor: themeColors.background,
-      borderRadius: 16,
-      padding: spacing.lg,
-      marginBottom: spacing.md,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.15,
-      shadowRadius: 8,
-      elevation: 5,
-      position: 'relative',
-      overflow: 'visible',
-      borderWidth: 1,
-      borderColor: themeColors.border,
     },
     deleteButton: {
       position: 'absolute',
@@ -133,9 +113,10 @@ export default function Investments() {
       flex: 1,
     },
     investmentValue: {
-      ...typography.h4,
+      fontSize: isDesktop ? 20 : 18,
       color: themeColors.primary,
       fontWeight: '700',
+      letterSpacing: -0.01,
     },
     investmentDetails: {
       marginTop: spacing.xs,
@@ -227,9 +208,9 @@ export default function Investments() {
     const returnPercentage = purchaseValue > 0 ? (returnAmount / purchaseValue) * 100 : 0;
 
     return (
-      <View style={dynamicStyles.investmentCard}>
+      <Card padding={getCardPadding()} marginBottom={spacing.lg}>
         <TouchableOpacity
-          style={dynamicStyles.deleteButton}
+          style={[dynamicStyles.deleteButton, { position: 'absolute', top: spacing.sm, right: spacing.sm }]}
           onPress={() => handleDeleteInvestment(item.id, item.symbol || '')}
           activeOpacity={0.7}
           hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
@@ -256,29 +237,31 @@ export default function Investments() {
             {formatCurrency(returnAmount)} ({returnPercentage.toFixed(2)}%)
           </Text>
         </View>
-      </View>
+      </Card>
     );
   };
 
-  const renderOpportunity = ({ item }: { item: typeof opportunities[0] }) => (
-    <View style={dynamicStyles.opportunityCard}>
-      <View style={dynamicStyles.opportunityHeader}>
-        <Text style={dynamicStyles.opportunityName}>{item.name}</Text>
-        <View style={[dynamicStyles.riskBadge, { backgroundColor: getRiskColor(item.riskLevel) }]}>
-          <Text style={dynamicStyles.riskText}>{item.riskLevel.toUpperCase()}</Text>
+  const renderOpportunity = ({ item }: { item: typeof opportunities[0] }) => {
+    return (
+      <Card padding={getCardPadding()} marginBottom={spacing.lg}>
+        <View style={dynamicStyles.opportunityHeader}>
+          <Text style={dynamicStyles.opportunityName}>{item.name}</Text>
+          <View style={[dynamicStyles.riskBadge, { backgroundColor: getRiskColor(item.riskLevel) }]}>
+            <Text style={dynamicStyles.riskText}>{toTitleCase(item.riskLevel)}</Text>
+          </View>
         </View>
-      </View>
-      <Text style={dynamicStyles.opportunityReturn}>
-        Rendimiento esperado: {item.expectedReturn}%
-      </Text>
-      <Text style={dynamicStyles.opportunityMin}>
-        Inversión mínima: {formatCurrency(item.minAmount)}
-      </Text>
-      {item.description && (
-        <Text style={dynamicStyles.opportunityDescription}>{item.description}</Text>
-      )}
-    </View>
-  );
+        <Text style={dynamicStyles.opportunityReturn}>
+          Rendimiento esperado: {item.expectedReturn}%
+        </Text>
+        <Text style={dynamicStyles.opportunityMin}>
+          Inversión mínima: {formatCurrency(item.minAmount)}
+        </Text>
+        {item.description && (
+          <Text style={dynamicStyles.opportunityDescription}>{item.description}</Text>
+        )}
+      </Card>
+    );
+  };
 
   if (loading) {
     return (
@@ -292,8 +275,8 @@ export default function Investments() {
     <ScrollView style={dynamicStyles.container} contentContainerStyle={styles.content}>
       <View style={styles.header}>
         <Text style={dynamicStyles.title}>Inversiones</Text>
-        <View style={dynamicStyles.summaryCard}>
-          <Text style={dynamicStyles.summaryLabel}>Valor del Portafolio</Text>
+        <Card padding={getCardPadding()} marginBottom={spacing.lg}>
+          <Text style={dynamicStyles.summaryLabel}>{toTitleCase('Valor del Portafolio')}</Text>
           <Text style={dynamicStyles.summaryValue}>{formatCurrency(portfolioValue)}</Text>
           <Text
             style={[
@@ -304,7 +287,7 @@ export default function Investments() {
             {portfolioReturn >= 0 ? '+' : ''}
             {formatCurrency(portfolioReturn)}
           </Text>
-        </View>
+        </Card>
       </View>
 
       <View style={dynamicStyles.section}>

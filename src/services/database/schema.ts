@@ -125,3 +125,17 @@ export interface CreditCardSchema {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface RecurringExpenseSchema {
+  id: string;
+  name: string; // e.g., "Renta departamento", "Crédito auto", "Hipoteca casa"
+  type: 'rent' | 'car_loan' | 'mortgage' | 'other';
+  monthlyAmount: number;
+  paymentDay: number; // Day of month (1-31) when payment is due
+  startDate: string; // ISO date string
+  endDate: string | null; // ISO date string or null if indefinite
+  description: string | null;
+  isActive: boolean;
+  createdAt: string;
+  updatedAt: string;
+}

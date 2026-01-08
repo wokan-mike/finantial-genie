@@ -9,6 +9,7 @@ import {
   InvestmentSchema,
   InvestmentOpportunitySchema,
   CreditCardSchema,
+  RecurringExpenseSchema,
 } from './schema';
 
 export interface TransactionRepository {
@@ -97,6 +98,15 @@ export interface CreditCardRepository {
   delete(id: string): Promise<void>;
 }
 
+export interface RecurringExpenseRepository {
+  getAll(): Promise<RecurringExpenseSchema[]>;
+  getActive(): Promise<RecurringExpenseSchema[]>;
+  getById(id: string): Promise<RecurringExpenseSchema | null>;
+  create(data: Omit<RecurringExpenseSchema, 'id' | 'createdAt' | 'updatedAt'>): Promise<RecurringExpenseSchema>;
+  update(id: string, data: Partial<RecurringExpenseSchema>): Promise<RecurringExpenseSchema>;
+  delete(id: string): Promise<void>;
+}
+
 export interface DatabaseAdapter {
   transactions: TransactionRepository;
   categories: CategoryRepository;
@@ -108,6 +118,7 @@ export interface DatabaseAdapter {
   investments: InvestmentRepository;
   investmentOpportunities: InvestmentOpportunityRepository;
   creditCards: CreditCardRepository;
+  recurringExpenses: RecurringExpenseRepository;
   initialize(): Promise<void>;
 }
 

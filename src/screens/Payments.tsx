@@ -1,11 +1,14 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, Platform } from 'react-native';
 import { usePayments } from '../hooks/usePayments';
 import { useTheme, getThemeColors } from '../context/ThemeContext';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { typography } from '../theme/typography';
 import { spacing } from '../theme/spacing';
 import { getYear, getMonth } from 'date-fns';
+import Card from '../components/common/Card';
+import { toTitleCase } from '../utils/textHelpers';
+import { isDesktop, getCardPadding, getContainerMaxWidth } from '../utils/responsive';
 
 export default function Payments() {
   const currentYear = getYear(new Date());
@@ -18,6 +21,15 @@ export default function Payments() {
     container: {
       flex: 1,
       backgroundColor: themeColors.surface,
+    },
+    contentWrapper: {
+      maxWidth: getContainerMaxWidth(),
+      width: '100%',
+      alignSelf: 'center',
+      ...(Platform.OS === 'web' && {
+        paddingLeft: isDesktop ? spacing.xl : spacing.md,
+        paddingRight: isDesktop ? spacing.xl : spacing.md,
+      }),
     },
     content: {
       padding: spacing.md,
@@ -34,27 +46,14 @@ export default function Payments() {
     subtitle: {
       ...typography.bodySmall,
       color: themeColors.textSecondary,
-    },
-    card: {
-      backgroundColor: themeColors.background,
-      borderRadius: 16,
-      padding: spacing.lg,
-      marginBottom: spacing.md,
-      shadowColor: '#000',
-      shadowOffset: { width: 0, height: 4 },
-      shadowOpacity: 0.15,
-      shadowRadius: 8,
-      elevation: 5,
-      borderWidth: 1,
-      borderColor: themeColors.border,
+      fontWeight: '400',
     },
     cardTitle: {
       ...typography.h4,
-      color: themeColors.textSecondary,
+      color: themeColors.text,
       marginBottom: spacing.md,
       fontWeight: '600',
-      textTransform: 'uppercase',
-      letterSpacing: 0.5,
+      fontSize: isDesktop ? 18 : 16,
     },
     summaryRow: {
       flexDirection: 'row',
@@ -66,10 +65,12 @@ export default function Payments() {
       ...typography.body,
       color: themeColors.text,
       flex: 1,
+      fontWeight: '400',
     },
     summaryValue: {
-      ...typography.h4,
+      fontSize: isDesktop ? 20 : 18,
       fontWeight: '700',
+      letterSpacing: -0.01,
     },
     income: {
       color: themeColors.accent,
@@ -90,8 +91,9 @@ export default function Payments() {
       marginBottom: spacing.xs,
     },
     balanceValue: {
-      ...typography.h1,
+      fontSize: isDesktop ? 36 : 32,
       fontWeight: '700',
+      letterSpacing: -0.02,
     },
     positive: {
       color: themeColors.accent,
@@ -125,9 +127,10 @@ export default function Payments() {
       color: themeColors.textSecondary,
     },
     paymentAmount: {
-      ...typography.h4,
+      fontSize: isDesktop ? 20 : 18,
       color: themeColors.text,
       fontWeight: '700',
+      letterSpacing: -0.01,
     },
     emptyText: {
       ...typography.bodySmall,
@@ -182,17 +185,22 @@ export default function Payments() {
   }
 
   return (
-    <ScrollView style={dynamicStyles.container} contentContainerStyle={dynamicStyles.content}>
-      <View style={dynamicStyles.header}>
-        <Text style={dynamicStyles.title}>Pagos del Mes</Text>
-        <Text style={dynamicStyles.subtitle}>
-          {new Date(currentYear, currentMonth - 1).toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })}
-        </Text>
-      </View>
+    <ScrollView 
+      style={dynamicStyles.container} 
+      contentContainerStyle={dynamicStyles.content}
+      showsVerticalScrollIndicator={Platform.OS === 'web'}
+    >
+      <View style={dynamicStyles.contentWrapper}>
+        <View style={dynamicStyles.header}>
+          <Text style={dynamicStyles.title}>Pagos del Mes</Text>
+          <Text style={dynamicStyles.subtitle}>
+            {new Date(currentYear, currentMonth - 1).toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })}
+          </Text>
+        </View>
 
-      {/* Resumen General */}
-      <View style={dynamicStyles.card}>
-        <Text style={dynamicStyles.cardTitle}>Resumen</Text>
+        {/* Resumen General */}
+        <Card padding={getCardPadding()} marginBottom={spacing.lg}>
+          <Text style={dynamicStyles.cardTitle}>{toTitleCase('Resumen')}</Text>
         <View style={dynamicStyles.summaryRow}>
           <Text style={dynamicStyles.summaryLabel}>Ingresos del Mes</Text>
           <Text style={[dynamicStyles.summaryValue, dynamicStyles.income]}>
@@ -211,6 +219,12 @@ export default function Payments() {
             -{formatCurrency(paymentSummary.totalInstallmentPayments)}
           </Text>
         </View>
+        <View style={dynamicStyles.summaryRow}>
+          <Text style={dynamicStyles.summaryLabel}>Cargos Recurrentes</Text>
+          <Text style={[dynamicStyles.summaryValue, dynamicStyles.expense]}>
+            -{formatCurrency(paymentSummary.totalRecurringExpensePayments)}
+          </Text>
+        </View>
         <View style={dynamicStyles.balanceContainer}>
           <Text style={dynamicStyles.balanceLabel}>Disponible Después de Pagos</Text>
           <Text
@@ -222,12 +236,12 @@ export default function Payments() {
             {formatCurrency(paymentSummary.availableAfterPayments)}
           </Text>
         </View>
-      </View>
+        </Card>
 
-      {/* Pagos de Tarjetas de Crédito */}
-      {paymentSummary.creditCardPayments.length > 0 && (
-        <View style={dynamicStyles.card}>
-          <Text style={dynamicStyles.cardTitle}>Pagos de Tarjetas de Crédito</Text>
+        {/* Pagos de Tarjetas de Crédito */}
+        {paymentSummary.creditCardPayments.length > 0 && (
+          <Card padding={getCardPadding()} marginBottom={spacing.lg}>
+            <Text style={dynamicStyles.cardTitle}>{toTitleCase('Pagos de Tarjetas de Crédito')}</Text>
           {paymentSummary.creditCardPayments.map((payment) => (
             <View
               key={payment.cardId}
@@ -268,13 +282,13 @@ export default function Payments() {
               <Text style={dynamicStyles.paymentAmount}>{formatCurrency(payment.amount)}</Text>
             </View>
           ))}
-        </View>
-      )}
+          </Card>
+        )}
 
-      {/* Pagos a Meses (sin tarjeta) */}
-      {paymentSummary.installmentPayments.length > 0 && (
-        <View style={dynamicStyles.card}>
-          <Text style={dynamicStyles.cardTitle}>Pagos a Meses</Text>
+        {/* Pagos a Meses (sin tarjeta) */}
+        {paymentSummary.installmentPayments.length > 0 && (
+          <Card padding={getCardPadding()} marginBottom={spacing.lg}>
+            <Text style={dynamicStyles.cardTitle}>{toTitleCase('Pagos a Meses')}</Text>
           {paymentSummary.installmentPayments.map((payment, index) => (
             <View
               key={`${payment.purchaseId}-${payment.paymentNumber}-${index}`}
@@ -310,18 +324,74 @@ export default function Payments() {
               <Text style={dynamicStyles.paymentAmount}>{formatCurrency(payment.amount)}</Text>
             </View>
           ))}
-        </View>
-      )}
-
-      {/* Mensaje si no hay pagos */}
-      {paymentSummary.creditCardPayments.length === 0 &&
-        paymentSummary.installmentPayments.length === 0 && (
-          <View style={dynamicStyles.card}>
-            <Text style={dynamicStyles.emptyText}>
-              No hay pagos programados para este mes
-            </Text>
-          </View>
+          </Card>
         )}
+
+        {/* Cargos Recurrentes */}
+        {paymentSummary.recurringExpensePayments.length > 0 && (
+          <Card padding={getCardPadding()} marginBottom={spacing.lg}>
+            <Text style={dynamicStyles.cardTitle}>{toTitleCase('Cargos Recurrentes')}</Text>
+          {paymentSummary.recurringExpensePayments.map((payment) => {
+            const getTypeLabel = (type: string) => {
+              const labels: Record<string, string> = {
+                rent: 'Renta',
+                car_loan: 'Crédito de Coche',
+                mortgage: 'Hipoteca',
+                other: 'Otro',
+              };
+              return labels[type] || 'Otro';
+            };
+            
+            return (
+              <View
+                key={payment.expenseId}
+                style={[dynamicStyles.paymentItem, { borderLeftColor: themeColors.secondary }]}
+              >
+                <View style={dynamicStyles.paymentInfo}>
+                  <Text style={dynamicStyles.paymentName}>
+                    {payment.expenseName}
+                  </Text>
+                  <Text style={dynamicStyles.paymentDetails}>
+                    {getTypeLabel(payment.expenseType)} • Vence: {formatDate(payment.dueDate.toISOString())}
+                  </Text>
+                  <View
+                    style={[
+                      dynamicStyles.daysBadge,
+                      payment.daysUntilDue <= 7 && dynamicStyles.urgentBadge,
+                    ]}
+                  >
+                    <Text
+                      style={[
+                        dynamicStyles.daysBadgeText,
+                        payment.daysUntilDue <= 7 && dynamicStyles.urgentBadgeText,
+                      ]}
+                    >
+                      {payment.daysUntilDue > 0
+                        ? `${payment.daysUntilDue} días restantes`
+                        : payment.daysUntilDue === 0
+                        ? 'Vence hoy'
+                        : `Vencido hace ${Math.abs(payment.daysUntilDue)} días`}
+                    </Text>
+                  </View>
+                </View>
+                <Text style={dynamicStyles.paymentAmount}>{formatCurrency(payment.amount)}</Text>
+              </View>
+            );
+          })}
+          </Card>
+        )}
+
+        {/* Mensaje si no hay pagos */}
+        {paymentSummary.creditCardPayments.length === 0 &&
+          paymentSummary.installmentPayments.length === 0 &&
+          paymentSummary.recurringExpensePayments.length === 0 && (
+            <Card padding={getCardPadding()}>
+              <Text style={dynamicStyles.emptyText}>
+                No hay pagos programados para este mes
+              </Text>
+            </Card>
+          )}
+      </View>
     </ScrollView>
   );
 }

@@ -14,6 +14,8 @@ import { startOfMonth, endOfMonth, isWithinInterval, parseISO, isSameMonth } fro
 import { getPaymentsForCurrentMonth } from '../services/calculations/installmentCalculator';
 import { isInCurrentBillingCycle, getLastCutDate, getNextCutDate } from '../services/calculations/creditCardExpenses';
 import { TransactionSchema } from '../services/database/schema';
+import Card from '../components/common/Card';
+import { isDesktop, getCardPadding } from '../utils/responsive';
 
 export default function Transactions() {
   const { transactions, loading, deleteTransaction, refresh } = useTransactions();
@@ -170,15 +172,6 @@ export default function Transactions() {
 
     const dynamicItemStyles = StyleSheet.create({
       transactionItem: {
-        backgroundColor: themeColors.background,
-        borderRadius: 8,
-        padding: spacing.md,
-        marginBottom: spacing.sm,
-        shadowColor: '#000',
-        shadowOffset: { width: 0, height: 1 },
-        shadowOpacity: 0.1,
-        shadowRadius: 2,
-        elevation: 2,
         flexDirection: 'row',
         alignItems: 'center',
         position: 'relative',
@@ -208,8 +201,9 @@ export default function Transactions() {
     });
 
     return (
-      <View style={dynamicItemStyles.transactionItem}>
-        <View style={styles.transactionContent}>
+      <Card padding={getCardPadding()} marginBottom={spacing.md}>
+        <View style={dynamicItemStyles.transactionItem}>
+          <View style={styles.transactionContent}>
           <View style={styles.transactionInfo}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: spacing.xs, flexWrap: 'wrap' }}>
               <Text style={dynamicItemStyles.transactionDescription}>{item.description}</Text>
@@ -225,7 +219,7 @@ export default function Transactions() {
                     color: themeColors.secondary,
                     fontWeight: '600',
                   }}>
-                    A MESES
+                    A Meses
                   </Text>
                 </View>
               )}
@@ -283,7 +277,8 @@ export default function Transactions() {
             </TouchableOpacity>
           </View>
         )}
-      </View>
+        </View>
+      </Card>
     );
   };
 
@@ -496,8 +491,9 @@ const styles = StyleSheet.create({
     gap: spacing.xs,
   },
   transactionAmount: {
-    ...typography.h4,
-    fontWeight: '600',
+    fontSize: isDesktop ? 18 : 16,
+    fontWeight: '700',
+    letterSpacing: -0.01,
   },
   emptyContainer: {
     padding: spacing.xl,
