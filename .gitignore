@@ -53,3 +53,4 @@ web-build/
 *.sqlite
 *.sqlite3
 
+/lambda/package

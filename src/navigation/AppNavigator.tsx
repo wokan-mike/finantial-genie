@@ -14,6 +14,7 @@ import Assets from '../screens/Assets';
 import Investments from '../screens/Investments';
 import CreditCards from '../screens/CreditCards';
 import Payments from '../screens/Payments';
+import StatementUpload from '../screens/StatementUpload';
 
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
@@ -104,6 +105,15 @@ export default function AppNavigator() {
       <StatusBar style="auto" />
       <Stack.Navigator screenOptions={{ headerShown: false }}>
         <Stack.Screen name="Main" component={MainTabs} />
+        <Stack.Screen 
+          name="StatementUpload" 
+          component={StatementUpload}
+          options={{
+            presentation: 'modal',
+            headerShown: true,
+            title: 'Subir Estado de Cuenta',
+          }}
+        />
       </Stack.Navigator>
     </NavigationContainer>
   );
