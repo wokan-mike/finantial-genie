@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   View,
   Text,
@@ -38,11 +38,19 @@ export default function CreditCardForm({ onClose, card }: CreditCardFormProps) {
   const [last4Digits, setLast4Digits] = useState(card?.last4Digits || '');
   const [cardColor, setCardColor] = useState(card?.color || '#1a237e');
   const [cutDate, setCutDate] = useState(card?.cutDate?.toString() || '15');
+  const [paymentDays, setPaymentDays] = useState(card?.paymentDays?.toString() || '');
   const [creditLimit, setCreditLimit] = useState(card?.creditLimit?.toString() || '');
   const [currentBalance, setCurrentBalance] = useState(card?.currentBalance?.toString() || '0');
 
   const availableTemplates = selectedBank ? getCreditCardsByBank(selectedBank) : [];
   const selectedTemplate = selectedTemplateId ? getCreditCardTemplate(selectedTemplateId) : null;
+
+  // Update paymentDays when template changes (only for new cards, not when editing)
+  useEffect(() => {
+    if (selectedTemplate && !isEditing && !paymentDays) {
+      setPaymentDays(selectedTemplate.paymentDays.toString());
+    }
+  }, [selectedTemplateId, selectedTemplate, isEditing]);
 
   const handleSubmit = async () => {
     if (!selectedBank) {
@@ -71,6 +79,13 @@ export default function CreditCardForm({ onClose, card }: CreditCardFormProps) {
       return;
     }
 
+    // Use custom paymentDays if provided, otherwise use template default
+    const paymentDaysNum = paymentDays ? parseInt(paymentDays) : (selectedTemplate?.paymentDays || 20);
+    if (isNaN(paymentDaysNum) || paymentDaysNum < 1 || paymentDaysNum > 60) {
+      Alert.alert('Error', 'Los días para pagar deben ser entre 1 y 60');
+      return;
+    }
+
     const limitNum = parseFloat(creditLimit);
     if (isNaN(limitNum) || limitNum <= 0) {
       Alert.alert('Error', 'Por favor ingresa un límite de crédito válido');
@@ -94,7 +109,7 @@ export default function CreditCardForm({ onClose, card }: CreditCardFormProps) {
           last4Digits,
           color: cardColor,
           cutDate: cutDateNum,
-          paymentDays: selectedTemplate.paymentDays,
+          paymentDays: paymentDaysNum,
           annualInterestRate: selectedTemplate.annualInterestRate,
           moratoryInterestRate: selectedTemplate.moratoryInterestRate,
           minPaymentPercentage: selectedTemplate.minPaymentPercentage,
@@ -111,7 +126,7 @@ export default function CreditCardForm({ onClose, card }: CreditCardFormProps) {
           last4Digits,
           color: cardColor,
           cutDate: cutDateNum,
-          paymentDays: selectedTemplate.paymentDays,
+          paymentDays: paymentDaysNum,
           annualInterestRate: selectedTemplate.annualInterestRate,
           moratoryInterestRate: selectedTemplate.moratoryInterestRate,
           minPaymentPercentage: selectedTemplate.minPaymentPercentage,
@@ -396,6 +411,30 @@ export default function CreditCardForm({ onClose, card }: CreditCardFormProps) {
             keyboardType="numeric"
             maxLength={2}
           />
+        </View>
+
+        {/* Días para Pagar */}
+        <View style={dynamicStyles.section}>
+          <Text style={dynamicStyles.label}>Días para Pagar (después del corte)</Text>
+          <TextInput
+            style={dynamicStyles.input}
+            value={paymentDays}
+            onChangeText={(text) => {
+              const num = text.replace(/[^0-9]/g, '');
+              if (num === '' || (parseInt(num) >= 1 && parseInt(num) <= 60)) {
+                setPaymentDays(num);
+              }
+            }}
+            placeholder={selectedTemplate?.paymentDays?.toString() || '20'}
+            placeholderTextColor={themeColors.textSecondary}
+            keyboardType="numeric"
+            maxLength={2}
+          />
+          {selectedTemplate && !paymentDays && (
+            <Text style={[dynamicStyles.infoText, { marginTop: spacing.xs, fontSize: 12 }]}>
+              Valor por defecto del template: {selectedTemplate.paymentDays} días
+            </Text>
+          )}
         </View>
 
         {/* Límite de Crédito */}

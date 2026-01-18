@@ -187,12 +187,39 @@ export default function StatementUpload() {
         duplicateResults
       );
 
-      showToast(`${saved} transacciones guardadas, ${skipped} omitidas`, 'success');
+      // Get dates of saved transactions to help user find them
+      if (saved > 0) {
+        const savedTxns = localExtractedTransactions.filter((_, i) => !duplicateResults.get(i)?.isDuplicate);
+        const dates = savedTxns.map(txn => txn.date).sort();
+        const firstDate = dates[0];
+        const lastDate = dates[dates.length - 1];
+        const monthRange = firstDate === lastDate
+          ? format(parseISO(firstDate), 'MMMM yyyy')
+          : `${format(parseISO(firstDate), 'MMMM yyyy')} - ${format(parseISO(lastDate), 'MMMM yyyy')}`;
+        
+        showToast(`${saved} transacciones guardadas${skipped > 0 ? `, ${skipped} omitidas` : ''}. Mes: ${monthRange}`, 'success');
+        console.log('[StatementUpload] Saved transactions info:', { 
+          saved, 
+          skipped, 
+          firstDate, 
+          lastDate, 
+          monthRange,
+          allDates: dates,
+        });
+      } else if (skipped > 0) {
+        showToast(`Todas las transacciones fueron omitidas (${skipped} duplicados)`, 'info');
+      } else {
+        showToast('No se guardaron transacciones', 'warning');
+      }
       
       // Reset form
       setPdfFile(null);
       setLocalExtractedTransactions([]);
       setDuplicateResults(new Map());
+      
+      // Wait a bit to ensure database is updated before navigating
+      await new Promise(resolve => setTimeout(resolve, 500));
+      
       navigation.goBack();
     } catch (err) {
       showToast('Error al guardar transacciones', 'error');

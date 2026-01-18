@@ -144,9 +144,14 @@ export const useInstallments = () => {
   const markPaymentAsPaid = async (paymentId: string) => {
     try {
       const db = await getDatabase();
+      const payment = await db.installmentPayments.getById(paymentId);
+      if (!payment) {
+        throw new Error('Pago no encontrado');
+      }
+      
       const updated = await db.installmentPayments.update(paymentId, {
-        status: 'paid',
-        paidDate: new Date().toISOString(),
+        status: payment.status === 'paid' ? 'pending' : 'paid',
+        paidDate: payment.status === 'paid' ? null : new Date().toISOString(),
       });
       setPayments(prev => prev.map(p => p.id === paymentId ? updated : p));
       return updated;

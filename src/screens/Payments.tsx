@@ -1,21 +1,60 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, Platform } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, Platform, TouchableOpacity } from 'react-native';
 import { usePayments } from '../hooks/usePayments';
 import { useTheme, getThemeColors } from '../context/ThemeContext';
+import { useToast } from '../context/ToastContext';
 import { formatCurrency, formatDate } from '../utils/formatters';
 import { typography } from '../theme/typography';
 import { spacing } from '../theme/spacing';
-import { getYear, getMonth } from 'date-fns';
+import { getYear, getMonth, subMonths, addMonths, format } from 'date-fns';
 import Card from '../components/common/Card';
 import { toTitleCase } from '../utils/textHelpers';
 import { isDesktop, getCardPadding, getContainerMaxWidth } from '../utils/responsive';
+import MonthSelector from '../components/MonthSelector';
+import { useInstallments } from '../hooks/useInstallments';
+import { useTransactions } from '../hooks/useTransactions';
+import { getMonthlyIncome } from '../services/calculations/biweeklyAvailability';
+import { InstallmentPaymentSchema } from '../services/database/schema';
+import { parseISO, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
 
 export default function Payments() {
-  const currentYear = getYear(new Date());
-  const currentMonth = getMonth(new Date()) + 1;
-  const { paymentSummary, loading, error } = usePayments(currentYear, currentMonth);
+  const [selectedMonth, setSelectedMonth] = useState(new Date());
+  const selectedYear = getYear(selectedMonth);
+  const selectedMonthNum = getMonth(selectedMonth) + 1;
+  const { paymentSummary, loading, error } = usePayments(selectedYear, selectedMonthNum);
+  const { payments, markPaymentAsPaid, refresh } = useInstallments();
+  const { transactions } = useTransactions();
   const { theme } = useTheme();
   const themeColors = getThemeColors(theme);
+  const { showToast } = useToast();
+  
+  // Track paid credit card payments
+  const [paidCreditCardPayments, setPaidCreditCardPayments] = useState<Set<string>>(() => {
+    // Load from localStorage on mount
+    if (Platform.OS === 'web') {
+      try {
+        const stored = localStorage.getItem('paidCreditCardPayments');
+        return stored ? new Set(JSON.parse(stored)) : new Set();
+      } catch {
+        return new Set();
+      }
+    }
+    return new Set();
+  });
+  
+  const handleMarkCreditCardPayment = (paymentKey: string) => {
+    const newPaidPayments = new Set(paidCreditCardPayments);
+    if (newPaidPayments.has(paymentKey)) {
+      newPaidPayments.delete(paymentKey);
+    } else {
+      newPaidPayments.add(paymentKey);
+    }
+    setPaidCreditCardPayments(newPaidPayments);
+    if (Platform.OS === 'web') {
+      localStorage.setItem('paidCreditCardPayments', JSON.stringify(Array.from(newPaidPayments)));
+    }
+    showToast(newPaidPayments.has(paymentKey) ? 'Pago marcado como realizado' : 'Pago marcado como pendiente', 'success');
+  };
 
   const dynamicStyles = StyleSheet.create({
     container: {
@@ -193,10 +232,57 @@ export default function Payments() {
       <View style={dynamicStyles.contentWrapper}>
         <View style={dynamicStyles.header}>
           <Text style={dynamicStyles.title}>Pagos del Mes</Text>
-          <Text style={dynamicStyles.subtitle}>
-            {new Date(currentYear, currentMonth - 1).toLocaleDateString('es-MX', { month: 'long', year: 'numeric' })}
-          </Text>
+          <MonthSelector selectedDate={selectedMonth} onDateChange={setSelectedMonth} />
         </View>
+
+        {/* Get payments for selected month and calculate paid/pending totals */}
+        {(() => {
+          const monthStart = startOfMonth(selectedMonth);
+          const monthEnd = endOfMonth(selectedMonth);
+          const monthPayments = payments.filter(payment => {
+            const dueDate = parseISO(payment.dueDate);
+            return isWithinInterval(dueDate, { start: monthStart, end: monthEnd });
+          });
+          
+          const monthPaidTotal = monthPayments
+            .filter(p => p.status === 'paid')
+            .reduce((sum, p) => sum + p.amount, 0);
+          
+          const monthlyIncome = getMonthlyIncome(transactions, selectedYear, selectedMonthNum);
+          const availableAfterPaidPayments = monthlyIncome - monthPaidTotal;
+
+          return (
+            <>
+              {/* Summary with paid payments deduction */}
+              <Card padding={getCardPadding()} marginBottom={spacing.lg}>
+                <Text style={dynamicStyles.cardTitle}>{toTitleCase('Ingresos y Disponible')}</Text>
+                <View style={dynamicStyles.summaryRow}>
+                  <Text style={dynamicStyles.summaryLabel}>Ingresos del mes:</Text>
+                  <Text style={[dynamicStyles.summaryValue, dynamicStyles.income]}>
+                    {formatCurrency(monthlyIncome)}
+                  </Text>
+                </View>
+                <View style={dynamicStyles.summaryRow}>
+                  <Text style={dynamicStyles.summaryLabel}>Pagos pagados:</Text>
+                  <Text style={[dynamicStyles.summaryValue, dynamicStyles.expense]}>
+                    -{formatCurrency(monthPaidTotal)}
+                  </Text>
+                </View>
+                <View style={dynamicStyles.balanceContainer}>
+                  <Text style={dynamicStyles.balanceLabel}>Disponible Después de Pagos Pagados</Text>
+                  <Text
+                    style={[
+                      dynamicStyles.balanceValue,
+                      availableAfterPaidPayments >= 0 ? dynamicStyles.positive : dynamicStyles.negative,
+                    ]}
+                  >
+                    {formatCurrency(availableAfterPaidPayments)}
+                  </Text>
+                </View>
+              </Card>
+            </>
+          );
+        })()}
 
         {/* Resumen General */}
         <Card padding={getCardPadding()} marginBottom={spacing.lg}>
@@ -242,46 +328,80 @@ export default function Payments() {
         {paymentSummary.creditCardPayments.length > 0 && (
           <Card padding={getCardPadding()} marginBottom={spacing.lg}>
             <Text style={dynamicStyles.cardTitle}>{toTitleCase('Pagos de Tarjetas de Crédito')}</Text>
-          {paymentSummary.creditCardPayments.map((payment) => (
-            <View
-              key={payment.cardId}
-              style={[dynamicStyles.paymentItem, { borderLeftColor: payment.cardColor }]}
-            >
-              <View style={dynamicStyles.paymentInfo}>
-                <Text style={dynamicStyles.paymentName}>
-                  {payment.cardName} ({payment.bank})
-                </Text>
-                <Text style={dynamicStyles.paymentDetails}>
-                  Vence: {formatDate(payment.dueDate.toISOString())}
-                </Text>
-                {payment.normalExpenses > 0 && payment.installmentExpenses > 0 && (
-                  <Text style={[dynamicStyles.paymentDetails, { marginTop: spacing.xs }]}>
-                    Gastos: {formatCurrency(payment.normalExpenses)} | A meses: {formatCurrency(payment.installmentExpenses)}
+          {paymentSummary.creditCardPayments.map((payment) => {
+            // Create a unique key for this payment based on card, cycle, and due date
+            const paymentKey = `${payment.cardId}-${payment.billingCycleStart.toISOString().split('T')[0]}-${payment.dueDate.toISOString().split('T')[0]}`;
+            const isPaid = paidCreditCardPayments.has(paymentKey);
+
+            return (
+              <TouchableOpacity
+                key={payment.cardId}
+                style={[
+                  dynamicStyles.paymentItem,
+                  { borderLeftColor: payment.cardColor },
+                  isPaid && { backgroundColor: themeColors.accent + '20', opacity: 0.7 }
+                ]}
+                onPress={() => handleMarkCreditCardPayment(paymentKey)}
+                activeOpacity={0.7}
+              >
+                <View style={dynamicStyles.paymentInfo}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.xs }}>
+                    <Text style={dynamicStyles.paymentName}>
+                      {payment.cardName} ({payment.bank})
+                    </Text>
+                    {isPaid && (
+                      <View style={{
+                        marginLeft: spacing.sm,
+                        backgroundColor: themeColors.accent,
+                        paddingHorizontal: spacing.xs,
+                        paddingVertical: 2,
+                        borderRadius: 4,
+                      }}>
+                        <Text style={{ ...typography.caption, color: themeColors.background, fontSize: 10, fontWeight: '600' }}>
+                          PAGADO
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={dynamicStyles.paymentDetails}>
+                    Vence: {formatDate(payment.dueDate.toISOString())}
                   </Text>
-                )}
-                <View
-                  style={[
-                    dynamicStyles.daysBadge,
-                    payment.daysUntilDue <= 7 && dynamicStyles.urgentBadge,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      dynamicStyles.daysBadgeText,
-                      payment.daysUntilDue <= 7 && dynamicStyles.urgentBadgeText,
-                    ]}
-                  >
-                    {payment.daysUntilDue > 0
-                      ? `${payment.daysUntilDue} días restantes`
-                      : payment.daysUntilDue === 0
-                      ? 'Vence hoy'
-                      : `Vencido hace ${Math.abs(payment.daysUntilDue)} días`}
-                  </Text>
+                  {payment.normalExpenses > 0 && payment.installmentExpenses > 0 && (
+                    <Text style={[dynamicStyles.paymentDetails, { marginTop: spacing.xs }]}>
+                      Gastos: {formatCurrency(payment.normalExpenses)} | A meses: {formatCurrency(payment.installmentExpenses)}
+                    </Text>
+                  )}
+                  {!isPaid && (
+                    <View
+                      style={[
+                        dynamicStyles.daysBadge,
+                        payment.daysUntilDue <= 7 && dynamicStyles.urgentBadge,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          dynamicStyles.daysBadgeText,
+                          payment.daysUntilDue <= 7 && dynamicStyles.urgentBadgeText,
+                        ]}
+                      >
+                        {payment.daysUntilDue > 0
+                          ? `${payment.daysUntilDue} días restantes`
+                          : payment.daysUntilDue === 0
+                          ? 'Vence hoy'
+                          : `Vencido hace ${Math.abs(payment.daysUntilDue)} días`}
+                      </Text>
+                    </View>
+                  )}
                 </View>
-              </View>
-              <Text style={dynamicStyles.paymentAmount}>{formatCurrency(payment.amount)}</Text>
-            </View>
-          ))}
+                <Text style={[
+                  dynamicStyles.paymentAmount,
+                  isPaid && { color: themeColors.textSecondary, textDecorationLine: 'line-through' }
+                ]}>
+                  {formatCurrency(payment.amount)}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
           </Card>
         )}
 
@@ -289,41 +409,87 @@ export default function Payments() {
         {paymentSummary.installmentPayments.length > 0 && (
           <Card padding={getCardPadding()} marginBottom={spacing.lg}>
             <Text style={dynamicStyles.cardTitle}>{toTitleCase('Pagos a Meses')}</Text>
-          {paymentSummary.installmentPayments.map((payment, index) => (
-            <View
-              key={`${payment.purchaseId}-${payment.paymentNumber}-${index}`}
-              style={[dynamicStyles.paymentItem, { borderLeftColor: themeColors.primary }]}
-            >
-              <View style={dynamicStyles.paymentInfo}>
-                <Text style={dynamicStyles.paymentName}>
-                  {payment.purchaseName} - Pago #{payment.paymentNumber}
-                </Text>
-                <Text style={dynamicStyles.paymentDetails}>
-                  Vence: {formatDate(payment.dueDate.toISOString())}
-                </Text>
-                <View
-                  style={[
-                    dynamicStyles.daysBadge,
-                    payment.daysUntilDue <= 7 && dynamicStyles.urgentBadge,
-                  ]}
-                >
-                  <Text
-                    style={[
-                      dynamicStyles.daysBadgeText,
-                      payment.daysUntilDue <= 7 && dynamicStyles.urgentBadgeText,
-                    ]}
-                  >
-                    {payment.daysUntilDue > 0
-                      ? `${payment.daysUntilDue} días restantes`
-                      : payment.daysUntilDue === 0
-                      ? 'Vence hoy'
-                      : `Vencido hace ${Math.abs(payment.daysUntilDue)} días`}
+          {paymentSummary.installmentPayments.map((payment, index) => {
+            const isPaid = payment.status === 'paid';
+            const handleMarkPayment = async () => {
+              try {
+                await markPaymentAsPaid(payment.paymentId);
+                showToast('Estado de pago actualizado', 'success');
+                refresh();
+              } catch (error) {
+                showToast('Error al actualizar el pago', 'error');
+              }
+            };
+
+            return (
+              <TouchableOpacity
+                key={`${payment.purchaseId}-${payment.paymentNumber}-${index}`}
+                style={[
+                  dynamicStyles.paymentItem,
+                  { borderLeftColor: themeColors.primary },
+                  isPaid && { backgroundColor: themeColors.accent + '20', opacity: 0.7 }
+                ]}
+                onPress={handleMarkPayment}
+                activeOpacity={0.7}
+              >
+                <View style={dynamicStyles.paymentInfo}>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.xs }}>
+                    <Text style={dynamicStyles.paymentName}>
+                      {payment.purchaseName} - Pago #{payment.paymentNumber}
+                    </Text>
+                    {isPaid && (
+                      <View style={{
+                        marginLeft: spacing.sm,
+                        backgroundColor: themeColors.accent,
+                        paddingHorizontal: spacing.xs,
+                        paddingVertical: 2,
+                        borderRadius: 4,
+                      }}>
+                        <Text style={{ ...typography.caption, color: themeColors.background, fontSize: 10, fontWeight: '600' }}>
+                          PAGADO
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                  <Text style={dynamicStyles.paymentDetails}>
+                    Vence: {formatDate(payment.dueDate.toISOString())}
                   </Text>
+                  {payment.paidDate && (
+                    <Text style={[dynamicStyles.paymentDetails, { marginTop: spacing.xs, color: themeColors.accent }]}>
+                      Pagado: {formatDate(payment.paidDate)}
+                    </Text>
+                  )}
+                  {!isPaid && (
+                    <View
+                      style={[
+                        dynamicStyles.daysBadge,
+                        payment.daysUntilDue <= 7 && dynamicStyles.urgentBadge,
+                      ]}
+                    >
+                      <Text
+                        style={[
+                          dynamicStyles.daysBadgeText,
+                          payment.daysUntilDue <= 7 && dynamicStyles.urgentBadgeText,
+                        ]}
+                      >
+                        {payment.daysUntilDue > 0
+                          ? `${payment.daysUntilDue} días restantes`
+                          : payment.daysUntilDue === 0
+                          ? 'Vence hoy'
+                          : `Vencido hace ${Math.abs(payment.daysUntilDue)} días`}
+                      </Text>
+                    </View>
+                  )}
                 </View>
-              </View>
-              <Text style={dynamicStyles.paymentAmount}>{formatCurrency(payment.amount)}</Text>
-            </View>
-          ))}
+                <Text style={[
+                  dynamicStyles.paymentAmount,
+                  isPaid && { color: themeColors.textSecondary, textDecorationLine: 'line-through' }
+                ]}>
+                  {formatCurrency(payment.amount)}
+                </Text>
+              </TouchableOpacity>
+            );
+          })}
           </Card>
         )}
 

@@ -84,6 +84,13 @@ export const useStatementProcessor = () => {
     const amountTolerance = 0.01;
     const dateTolerance = 1; // days
 
+    console.log('[checkDuplicate] Checking transaction:', {
+      description: transaction.description,
+      amount: transaction.amount,
+      date: transaction.date,
+      creditCardId,
+    });
+
     // Find potential duplicates
     const potentialDuplicates = transactions.filter(txn => {
       // Must be same credit card
@@ -103,7 +110,10 @@ export const useStatementProcessor = () => {
       return true;
     });
 
+    console.log('[checkDuplicate] Found potential duplicates:', potentialDuplicates.length);
+
     if (potentialDuplicates.length === 0) {
+      console.log('[checkDuplicate] No duplicates found');
       return { isDuplicate: false };
     }
 
@@ -111,10 +121,18 @@ export const useStatementProcessor = () => {
     const normalizedDescription = normalizeDescription(transaction.description);
     const similarTxn = potentialDuplicates.find(txn => {
       const txnDescription = normalizeDescription(txn.description);
-      return areDescriptionsSimilar(normalizedDescription, txnDescription);
+      const isSimilar = areDescriptionsSimilar(normalizedDescription, txnDescription);
+      if (isSimilar) {
+        console.log('[checkDuplicate] Found similar transaction:', {
+          new: transaction.description,
+          existing: txn.description,
+        });
+      }
+      return isSimilar;
     });
 
     if (similarTxn) {
+      console.log('[checkDuplicate] Duplicate confirmed');
       return {
         isDuplicate: true,
         existingTransaction: similarTxn,
@@ -122,6 +140,7 @@ export const useStatementProcessor = () => {
       };
     }
 
+    console.log('[checkDuplicate] No similar description found, not a duplicate');
     return { isDuplicate: false };
   };
 
@@ -154,11 +173,16 @@ export const useStatementProcessor = () => {
     let saved = 0;
     let skipped = 0;
 
+    console.log('[saveTransactions] Starting save process...');
+    console.log('[saveTransactions] Total transactions:', transactions.length);
+    console.log('[saveTransactions] Duplicate results:', Array.from(duplicateResults.entries()).map(([i, r]) => ({ index: i, isDuplicate: r.isDuplicate })));
+
     for (let i = 0; i < transactions.length; i++) {
       const txn = transactions[i];
       const duplicateResult = duplicateResults.get(i);
 
       if (duplicateResult?.isDuplicate) {
+        console.log(`[saveTransactions] Skipping duplicate transaction ${i}:`, txn.description);
         skipped++;
         continue;
       }
@@ -170,7 +194,23 @@ export const useStatementProcessor = () => {
       const categoryId = category?.id || DEFAULT_CATEGORIES[DEFAULT_CATEGORIES.length - 1].id; // Default to "Otros"
 
       try {
-        await db.transactions.create({
+        console.log(`[saveTransactions] Saving transaction ${i}:`, {
+          description: txn.description,
+          amount: txn.amount,
+          date: txn.date,
+          creditCardId,
+          categoryId,
+        });
+        
+        // Verify date is valid
+        const transactionDate = parseISO(txn.date);
+        if (isNaN(transactionDate.getTime())) {
+          console.error(`[saveTransactions] Invalid date for transaction ${i}:`, txn.date);
+          skipped++;
+          continue;
+        }
+        
+        const created = await db.transactions.create({
           type: 'expense',
           amount: txn.amount,
           description: txn.description,
@@ -179,15 +219,29 @@ export const useStatementProcessor = () => {
           isRecurring: false,
           creditCardId,
         });
+        
+        console.log(`[saveTransactions] Transaction ${i} saved successfully:`, {
+          id: created.id,
+          description: created.description,
+          date: created.date,
+          amount: created.amount,
+          creditCardId: created.creditCardId,
+          month: format(transactionDate, 'yyyy-MM'),
+        });
         saved++;
       } catch (err) {
-        console.error(`Error saving transaction ${i}:`, err);
+        console.error(`[saveTransactions] Error saving transaction ${i}:`, err);
+        console.error(`[saveTransactions] Transaction data:`, txn);
         skipped++;
       }
     }
 
-    // Reload transactions
+    console.log(`[saveTransactions] Save complete. Saved: ${saved}, Skipped: ${skipped}`);
+
+    // Reload transactions to ensure UI is updated
+    console.log('[saveTransactions] Reloading transactions...');
     await loadTransactions();
+    console.log('[saveTransactions] Transactions reloaded');
 
     return { saved, skipped };
   };

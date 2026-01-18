@@ -315,7 +315,6 @@ export default function Dashboard() {
           <Card padding={getCardPadding()} marginBottom={0}>
             <Text style={dynamicStyles.cardTitle}>{toTitleCase('Gastos de Tarjetas de Crédito')}</Text>
           {creditCardExpenses
-            .filter(summary => summary.totalExpenses > 0)
             .map((summary) => (
               <View key={summary.cardId} style={dynamicStyles.categoryItem}>
                 <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>

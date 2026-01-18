@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, FlatList, TouchableOpacity, Alert, Modal, Platform } from 'react-native';
+import { useNavigation } from '@react-navigation/native';
 import { useTransactions } from '../hooks/useTransactions';
 import { useCreditCards } from '../hooks/useCreditCards';
 import { useInstallments } from '../hooks/useInstallments';
@@ -10,14 +11,14 @@ import { typography } from '../theme/typography';
 import { spacing } from '../theme/spacing';
 import MonthSelector from '../components/MonthSelector';
 import TransactionForm from '../components/forms/TransactionForm';
-import { startOfMonth, endOfMonth, isWithinInterval, parseISO, isSameMonth } from 'date-fns';
+import { startOfMonth, endOfMonth, isWithinInterval, parseISO, format } from 'date-fns';
 import { getPaymentsForCurrentMonth } from '../services/calculations/installmentCalculator';
-import { isInCurrentBillingCycle, getLastCutDate, getNextCutDate } from '../services/calculations/creditCardExpenses';
 import { TransactionSchema } from '../services/database/schema';
 import Card from '../components/common/Card';
 import { isDesktop, getCardPadding } from '../utils/responsive';
 
 export default function Transactions() {
+  const navigation = useNavigation();
   const { transactions, loading, deleteTransaction, refresh } = useTransactions();
   const { creditCards } = useCreditCards();
   const { payments } = useInstallments();
@@ -25,9 +26,21 @@ export default function Transactions() {
   const themeColors = getThemeColors(theme);
   const { showToast } = useToast();
   const [filter, setFilter] = useState<'all' | 'income' | 'expense'>('all');
+  const [creditCardFilter, setCreditCardFilter] = useState<'all' | 'withCard' | 'withoutCard'>('all');
+  const [selectedCreditCardId, setSelectedCreditCardId] = useState<string | null>(null);
   const [selectedMonth, setSelectedMonth] = useState(new Date());
   const [showForm, setShowForm] = useState(false);
   const [editingTransaction, setEditingTransaction] = useState<typeof transactions[0] | null>(null);
+  
+  // Refresh transactions when screen comes into focus (e.g., after uploading statement)
+  useEffect(() => {
+    const unsubscribe = (navigation as any)?.addListener?.('focus', () => {
+      console.log('[Transactions] Screen focused, refreshing transactions...');
+      refresh();
+    });
+    
+    return unsubscribe;
+  }, [navigation, refresh]);
 
   // Get installment payments for the selected month
   const monthStart = startOfMonth(selectedMonth);
@@ -65,38 +78,66 @@ export default function Transactions() {
 
   const filteredTransactions = allTransactions.filter(txn => {
     // Filter by type
-    if (filter !== 'all' && txn.type !== filter) return false;
+    if (filter !== 'all' && txn.type !== filter) {
+      console.log(`[Transactions] Filtered out by type: ${txn.description} (type: ${txn.type}, filter: ${filter})`);
+      return false;
+    }
     
-    // Filter by month
+    // Filter by credit card
+    if (creditCardFilter === 'withCard' && !txn.creditCardId) {
+      console.log(`[Transactions] Filtered out by credit card filter (withCard but no card): ${txn.description}`);
+      return false;
+    }
+    if (creditCardFilter === 'withoutCard' && txn.creditCardId) {
+      console.log(`[Transactions] Filtered out by credit card filter (withoutCard but has card): ${txn.description}`);
+      return false;
+    }
+    
+    // If filtering by specific credit card
+    if (creditCardFilter === 'withCard' && selectedCreditCardId && txn.creditCardId !== selectedCreditCardId) {
+      console.log(`[Transactions] Filtered out by specific card: ${txn.description} (card: ${txn.creditCardId}, selected: ${selectedCreditCardId})`);
+      return false;
+    }
+    
+    // Filter by month - show all transactions in the selected month
     const txnDate = parseISO(txn.date);
     const isInSelectedMonth = isWithinInterval(txnDate, { start: monthStart, end: monthEnd });
     
-    // If transaction is associated with a credit card, check if it should be shown
-    if (txn.creditCardId && txn.type === 'expense' && !(txn as any).isInstallment) {
-      const card = creditCards.find(c => c.id === txn.creditCardId);
-      if (card) {
-        const transactionDate = parseISO(txn.date);
-        const today = new Date();
-        
-        // Get the cut date that applies to this transaction
-        // If viewing current month, only show transactions that have passed their cut date
-        const isCurrentMonth = isSameMonth(selectedMonth, today);
-        
-        if (isCurrentMonth) {
-          // For current month, only show if the cut date has passed
-          const lastCutDate = getLastCutDate(card, today);
-          // Show if transaction is after the last cut date (it's been billed)
-          return isInSelectedMonth && transactionDate >= lastCutDate;
-        } else {
-          // For past/future months, show all transactions in that month
-          return isInSelectedMonth;
-        }
-      }
+    if (!isInSelectedMonth) {
+      console.log(`[Transactions] Filtered out by month: ${txn.description} (date: ${txn.date}, selected month: ${format(selectedMonth, 'yyyy-MM')})`);
+      return false;
     }
     
-    // For non-credit card transactions, show normally
-    return isInSelectedMonth;
+    // Show all transactions in the selected month, regardless of cut date
+    // This ensures that when users upload statements, all transactions are visible
+    return true;
   });
+  
+  // Log summary for debugging
+  useEffect(() => {
+    console.log('[Transactions] Filter summary:', {
+      totalTransactions: allTransactions.length,
+      filteredCount: filteredTransactions.length,
+      selectedMonth: format(selectedMonth, 'yyyy-MM'),
+      filter,
+      creditCardFilter,
+      selectedCreditCardId,
+      monthStart: format(monthStart, 'yyyy-MM-dd'),
+      monthEnd: format(monthEnd, 'yyyy-MM-dd'),
+    });
+    
+    // Log sample of transactions with their dates
+    if (allTransactions.length > 0) {
+      console.log('[Transactions] Sample transactions (first 5):', 
+        allTransactions.slice(0, 5).map(txn => ({
+          description: txn.description,
+          date: txn.date,
+          creditCardId: txn.creditCardId,
+          type: txn.type,
+        }))
+      );
+    }
+  }, [allTransactions, filteredTransactions, selectedMonth, filter, creditCardFilter, selectedCreditCardId, monthStart, monthEnd]);
 
   const handleDelete = async (id: string, description: string) => {
     console.log('[handleDelete] Called with id:', id, 'description:', description);
@@ -384,6 +425,111 @@ export default function Transactions() {
             </Text>
           </TouchableOpacity>
         </View>
+        <View style={[styles.filters, { marginTop: spacing.sm }]}>
+          <TouchableOpacity
+            style={[
+              styles.filterButton,
+              { backgroundColor: themeColors.surface, borderColor: themeColors.border },
+              creditCardFilter === 'all' && { backgroundColor: themeColors.secondary, borderColor: themeColors.secondary }
+            ]}
+            onPress={() => {
+              setCreditCardFilter('all');
+              setSelectedCreditCardId(null);
+            }}
+          >
+            <Text style={[
+              styles.filterText,
+              { color: themeColors.text },
+              creditCardFilter === 'all' && { color: themeColors.background }
+            ]}>
+              Todas
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.filterButton,
+              { backgroundColor: themeColors.surface, borderColor: themeColors.border },
+              creditCardFilter === 'withCard' && { backgroundColor: themeColors.secondary, borderColor: themeColors.secondary }
+            ]}
+            onPress={() => {
+              setCreditCardFilter('withCard');
+              // Reset selected card when switching to "withCard" if no card was selected
+              if (!selectedCreditCardId && creditCards.length > 0) {
+                setSelectedCreditCardId(null);
+              }
+            }}
+          >
+            <Text style={[
+              styles.filterText,
+              { color: themeColors.text },
+              creditCardFilter === 'withCard' && { color: themeColors.background }
+            ]}>
+              Con Tarjeta
+            </Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[
+              styles.filterButton,
+              { backgroundColor: themeColors.surface, borderColor: themeColors.border },
+              creditCardFilter === 'withoutCard' && { backgroundColor: themeColors.secondary, borderColor: themeColors.secondary }
+            ]}
+            onPress={() => {
+              setCreditCardFilter('withoutCard');
+              setSelectedCreditCardId(null);
+            }}
+          >
+            <Text style={[
+              styles.filterText,
+              { color: themeColors.text },
+              creditCardFilter === 'withoutCard' && { color: themeColors.background }
+            ]}>
+              Sin Tarjeta
+            </Text>
+          </TouchableOpacity>
+        </View>
+        {creditCardFilter === 'withCard' && creditCards.filter(card => card.isActive).length > 0 && (
+          <View style={[styles.filters, { marginTop: spacing.sm, flexWrap: 'wrap' }]}>
+            <TouchableOpacity
+              style={[
+                styles.filterButton,
+                { backgroundColor: themeColors.surface, borderColor: themeColors.border },
+                selectedCreditCardId === null && { backgroundColor: themeColors.secondary, borderColor: themeColors.secondary }
+              ]}
+              onPress={() => setSelectedCreditCardId(null)}
+            >
+              <Text style={[
+                styles.filterText,
+                { color: themeColors.text },
+                selectedCreditCardId === null && { color: themeColors.background }
+              ]}>
+                Todas las Tarjetas
+              </Text>
+            </TouchableOpacity>
+            {creditCards.filter(card => card.isActive).map(card => (
+              <TouchableOpacity
+                key={card.id}
+                style={[
+                  styles.filterButton,
+                  { 
+                    backgroundColor: themeColors.surface, 
+                    borderColor: card.color,
+                    borderWidth: selectedCreditCardId === card.id ? 2 : 1
+                  },
+                  selectedCreditCardId === card.id && { backgroundColor: card.color, borderColor: card.color }
+                ]}
+                onPress={() => setSelectedCreditCardId(card.id)}
+              >
+                <Text style={[
+                  styles.filterText,
+                  { color: themeColors.text },
+                  selectedCreditCardId === card.id && { color: themeColors.background }
+                ]}>
+                  {card.name}
+                </Text>
+              </TouchableOpacity>
+            ))}
+          </View>
+        )}
       </View>
 
       <FlatList

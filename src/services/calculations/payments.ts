@@ -25,6 +25,7 @@ export interface PaymentSummary {
 }
 
 export interface CreditCardPayment {
+  paymentId?: string; // ID if payment is tracked in database
   cardId: string;
   cardName: string;
   cardColor: string;
@@ -34,15 +35,22 @@ export interface CreditCardPayment {
   daysUntilDue: number;
   normalExpenses: number;
   installmentExpenses: number;
+  status?: 'pending' | 'paid';
+  paidDate?: string | null;
+  billingCycleStart: Date;
+  billingCycleEnd: Date;
 }
 
 export interface InstallmentPayment {
+  paymentId: string; // ID of the InstallmentPaymentSchema
   purchaseId: string;
   purchaseName: string;
   amount: number;
   dueDate: Date;
   paymentNumber: number;
   daysUntilDue: number;
+  status: 'pending' | 'paid';
+  paidDate: string | null;
 }
 
 /**
@@ -64,86 +72,100 @@ export const calculatePaymentsForMonth = (
   // Calculate monthly income
   const monthIncome = getMonthlyIncome(transactions, year, month);
   
-  // Calculate credit card payments that are due this month
-  // For each card, we need to find the billing cycle that ended in the previous month
-  // and whose payment is due in this month
+  // Calculate credit card payments for the SELECTED month
+  // We need to find the billing cycle whose payment is due in the selected month
+  const referenceDate = new Date(year, month - 1, 15); // Use middle of month as reference
   const creditCardPayments: CreditCardPayment[] = [];
   
   for (const card of creditCards.filter(c => c.isActive)) {
-    // Find the cut date in the previous month that would result in payment due this month
-    // Payment due date = cut date + payment days
-    const prevMonth = month === 1 ? 12 : month - 1;
-    const prevYear = month === 1 ? year - 1 : year;
-    const prevMonthCutDate = new Date(prevYear, prevMonth - 1, card.cutDate);
-    const paymentDueDate = getPaymentDueDate(card, prevMonthCutDate);
+    // Work backwards: find the cut date that results in a payment due in the selected month
+    // Payment due date = cut date + paymentDays
+    // So we need: cut date = payment due date - paymentDays
     
-    // Check if this payment is due in the target month
-    if (isWithinInterval(paymentDueDate, { start: monthStart, end: monthEnd })) {
-      // Calculate expenses for the billing cycle that ended at prevMonthCutDate
-      // The cycle is from the day AFTER the previous cut date to the prevMonthCutDate (inclusive)
-      // Example: If cut is on 17th, cycle is from 18th of previous month to 17th of current month
+    // Try to find a cut date in the selected month or previous month that results in payment due in selected month
+    // We'll check a few potential cut dates around the estimated date
+    
+    let foundCycle = false;
+    let cycleCutDate: Date | null = null;
+    let paymentDueDate: Date | null = null;
+    let cycleStartDate: Date | null = null;
+    let cycleEndDate: Date | null = null;
+    
+    // Try cut dates from 2 months before to 1 month after the selected month
+    for (let monthOffset = -2; monthOffset <= 1; monthOffset++) {
+      const testMonth = month - 1 + monthOffset;
+      const testYear = year + Math.floor(testMonth / 12);
+      const adjustedMonth = ((testMonth % 12) + 12) % 12;
       
-      // Calculate the previous cut date (one month before prevMonthCutDate)
-      const previousCutMonth = prevMonth === 1 ? 12 : prevMonth - 1;
-      const previousCutYear = prevMonth === 1 ? prevYear - 1 : prevYear;
-      const previousCutDate = new Date(previousCutYear, previousCutMonth - 1, card.cutDate);
+      const testCutDate = new Date(testYear, adjustedMonth, card.cutDate);
+      const testPaymentDueDate = getPaymentDueDate(card, testCutDate);
       
-      // Cycle starts the day AFTER the previous cut date
-      const cycleStartDate = new Date(previousCutDate);
-      cycleStartDate.setDate(cycleStartDate.getDate() + 1);
-      cycleStartDate.setHours(0, 0, 0, 0);
-      
-      // Cycle ends on the cut date (inclusive)
-      const cycleEndDate = new Date(prevMonthCutDate);
-      cycleEndDate.setHours(23, 59, 59, 999);
-      
-      console.log(`[Payments] Card: ${card.name}, Cut date: ${card.cutDate}`);
-      console.log(`[Payments] Card: ${card.name}, Previous cut: ${previousCutDate.toISOString().split('T')[0]}`);
-      console.log(`[Payments] Card: ${card.name}, Current cut: ${prevMonthCutDate.toISOString().split('T')[0]}`);
-      console.log(`[Payments] Card: ${card.name}, Cycle: ${cycleStartDate.toISOString().split('T')[0]} to ${cycleEndDate.toISOString().split('T')[0]}, Payment due: ${paymentDueDate.toISOString().split('T')[0]}`);
-      
-      // Calculate normal expenses in this billing cycle
-      // Transactions must be >= cycleStartDate and <= cycleEndDate
-      const relevantTransactions = transactions.filter(txn => {
-        if (!txn.creditCardId || txn.creditCardId !== card.id || txn.type !== 'expense') {
-          return false;
+      // Check if this payment due date falls within the selected month
+      if (isWithinInterval(testPaymentDueDate, { start: monthStart, end: monthEnd })) {
+        cycleCutDate = testCutDate;
+        paymentDueDate = testPaymentDueDate;
+        
+        // Calculate the billing cycle for this cut date
+        const previousCutDate = new Date(testCutDate);
+        if (previousCutDate.getMonth() === 0) {
+          previousCutDate.setFullYear(previousCutDate.getFullYear() - 1);
+          previousCutDate.setMonth(11);
+        } else {
+          previousCutDate.setMonth(previousCutDate.getMonth() - 1);
         }
-        const txnDate = parseISO(txn.date);
-        // Transaction must be on or after cycle start and on or before cycle end
-        return txnDate >= cycleStartDate && txnDate <= cycleEndDate;
-      });
-      
-      console.log(`[Payments] Card: ${card.name}, Relevant transactions: ${relevantTransactions.length}`);
-      relevantTransactions.forEach(txn => {
-        console.log(`[Payments] Transaction: ${txn.description} - ${txn.amount} on ${parseISO(txn.date).toISOString().split('T')[0]}`);
-      });
-      
-      const normalExpenses = relevantTransactions.reduce((sum, txn) => sum + txn.amount, 0);
-      
-      console.log(`[Payments] Card: ${card.name}, Normal expenses: ${normalExpenses}`);
-      
-      // Calculate installment expenses in this billing cycle
-      const cardPurchases = installmentPurchases.filter(p => p.creditCardId === card.id);
-      const cardPaymentIds = new Set(cardPurchases.map(p => p.id));
-      
-      const installmentExpenses = installmentPayments
-        .filter(payment => {
-          if (payment.status !== 'pending') return false;
-          if (!cardPaymentIds.has(payment.installmentPurchaseId)) return false;
-          const dueDate = parseISO(payment.dueDate);
-          // Payment must be in the billing cycle (>= cycle start, <= cycle end)
-          return dueDate >= cycleStartDate && dueDate <= cycleEndDate;
-        })
-        .reduce((sum, payment) => sum + payment.amount, 0);
-      
-      console.log(`[Payments] Card: ${card.name}, Installment expenses: ${installmentExpenses}`);
-      
-      const totalExpenses = normalExpenses + installmentExpenses;
-      const daysUntilDue = Math.ceil((paymentDueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
-      
-      console.log(`[Payments] Card: ${card.name}, Total expenses: ${totalExpenses}`);
-      
-      // Include payment even if totalExpenses is 0, as there might be minimum payments
+        
+        // Cycle starts the day AFTER the previous cut date
+        cycleStartDate = new Date(previousCutDate);
+        cycleStartDate.setDate(cycleStartDate.getDate() + 1);
+        cycleStartDate.setHours(0, 0, 0, 0);
+        
+        // Cycle ends on the cut date (inclusive)
+        cycleEndDate = new Date(testCutDate);
+        cycleEndDate.setHours(23, 59, 59, 999);
+        
+        foundCycle = true;
+        break;
+      }
+    }
+    
+    // If no cycle found with payment due in selected month, skip this card
+    if (!foundCycle || !cycleCutDate || !paymentDueDate || !cycleStartDate || !cycleEndDate) {
+      continue;
+    }
+    
+    // Calculate normal expenses in this billing cycle
+    const relevantTransactions = transactions.filter(txn => {
+      if (!txn.creditCardId || txn.creditCardId !== card.id || txn.type !== 'expense') {
+        return false;
+      }
+      const txnDate = parseISO(txn.date);
+      // Transaction must be on or after cycle start and on or before cycle end
+      return txnDate >= cycleStartDate && txnDate <= cycleEndDate;
+    });
+    
+    const normalExpenses = relevantTransactions.reduce((sum, txn) => sum + txn.amount, 0);
+    
+    // Calculate installment expenses in this billing cycle
+    const cardPurchases = installmentPurchases.filter(p => p.creditCardId === card.id);
+    const cardPaymentIds = new Set(cardPurchases.map(p => p.id));
+    
+    const installmentExpenses = installmentPayments
+      .filter(payment => {
+        if (payment.status !== 'pending') return false;
+        if (!cardPaymentIds.has(payment.installmentPurchaseId)) return false;
+        const dueDate = parseISO(payment.dueDate);
+        // Payment must be in the billing cycle (>= cycle start, <= cycle end)
+        return dueDate >= cycleStartDate && dueDate <= cycleEndDate;
+      })
+      .reduce((sum, payment) => sum + payment.amount, 0);
+    
+    const totalExpenses = normalExpenses + installmentExpenses;
+    
+    // Calculate days until due based on reference date (selected month)
+    const daysUntilDue = Math.ceil((paymentDueDate.getTime() - referenceDate.getTime()) / (1000 * 60 * 60 * 24));
+    
+    // Include payment if it has expenses OR if the payment is due in the selected month
+    if (totalExpenses > 0 || isWithinInterval(paymentDueDate, { start: monthStart, end: monthEnd })) {
       creditCardPayments.push({
         cardId: card.id,
         cardName: card.name,
@@ -154,16 +176,19 @@ export const calculatePaymentsForMonth = (
         daysUntilDue,
         normalExpenses,
         installmentExpenses,
+        status: 'pending', // Default, will be updated from database if tracked
+        paidDate: null,
+        billingCycleStart: cycleStartDate,
+        billingCycleEnd: cycleEndDate,
       });
     }
   }
   
   // Calculate installment payments (not associated with credit cards) that are due this month
+  // Include both pending and paid payments so user can see and manage them
   const installmentPaymentsWithoutCard: InstallmentPayment[] = installmentPayments
     .filter(payment => {
-      if (payment.status !== 'pending') return false;
-      
-      // Check if payment is due this month
+      // Check if payment is due this month (include both pending and paid)
       const dueDate = parseISO(payment.dueDate);
       const isDueThisMonth = isWithinInterval(dueDate, { start: monthStart, end: monthEnd });
       
@@ -179,12 +204,15 @@ export const calculatePaymentsForMonth = (
       const daysUntilDue = Math.ceil((dueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
       
       return {
+        paymentId: payment.id, // Include payment ID for marking as paid
         purchaseId: payment.installmentPurchaseId,
         purchaseName: purchase?.name || 'Compra desconocida',
         amount: payment.amount,
         dueDate,
         paymentNumber: payment.paymentNumber,
         daysUntilDue,
+        status: payment.status,
+        paidDate: payment.paidDate,
       };
     });
   

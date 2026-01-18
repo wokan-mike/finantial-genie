@@ -139,3 +139,16 @@ export interface RecurringExpenseSchema {
   createdAt: string;
   updatedAt: string;
 }
+
+export interface CreditCardPaymentSchema {
+  id: string;
+  creditCardId: string;
+  amount: number;
+  dueDate: string; // ISO date string
+  paidDate: string | null;
+  status: 'pending' | 'paid';
+  billingCycleStart: string; // ISO date string
+  billingCycleEnd: string; // ISO date string
+  createdAt: string;
+  updatedAt: string;
+}
