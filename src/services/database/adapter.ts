@@ -1,9 +1,8 @@
 import { Platform } from 'react-native';
 import { DatabaseAdapter } from './adapter.interface';
 import { DexieAdapter } from './dexieAdapter';
+import { AsyncStorageAdapter } from './asyncStorageAdapter';
 
-// For now, we'll use Dexie for both platforms
-// WatermelonDB adapter can be added later for better mobile performance
 let databaseAdapter: DatabaseAdapter | null = null;
 
 export const getDatabase = async (): Promise<DatabaseAdapter> => {
@@ -11,14 +10,12 @@ export const getDatabase = async (): Promise<DatabaseAdapter> => {
     return databaseAdapter;
   }
 
-  // For now, use Dexie for both web and mobile
-  // TODO: Add WatermelonDB adapter for mobile when needed
+  // Use Dexie (IndexedDB) for web, AsyncStorage for mobile
   if (Platform.OS === 'web') {
     databaseAdapter = new DexieAdapter();
   } else {
-    // For mobile, we can use Dexie for now, or implement WatermelonDB later
-    // WatermelonDB requires more setup with @nozbe/watermelondb models
-    databaseAdapter = new DexieAdapter();
+    // Use AsyncStorage for mobile (works with Expo Go)
+    databaseAdapter = new AsyncStorageAdapter();
   }
 
   await databaseAdapter.initialize();

@@ -9,6 +9,7 @@ import { typography } from '../theme/typography';
 import { spacing } from '../theme/spacing';
 import { getYear, getMonth } from 'date-fns';
 import Card from '../components/common/Card';
+import GradientCard from '../components/common/GradientCard';
 import ProgressBar from '../components/common/ProgressBar';
 import { isDesktop, isTablet, getCardPadding, getContainerMaxWidth } from '../utils/responsive';
 
@@ -47,71 +48,132 @@ export default function Dashboard() {
   // Calculate available amount (income - expenses)
   const availableAmount = monthlySummary.totalIncome - monthlySummary.totalExpenses;
 
+  // Aplicar gradiente al fondo en web usando ref - DEBE estar antes de cualquier return
+  const scrollViewRef = React.useRef<any>(null);
+  
+  React.useEffect(() => {
+    if (Platform.OS === 'web' && scrollViewRef.current) {
+      const element = scrollViewRef.current as any;
+      const gradientBg = theme === 'dark'
+        ? 'linear-gradient(180deg, rgba(15, 23, 42, 1) 0%, rgba(30, 41, 59, 0.98) 50%, rgba(15, 23, 42, 0.95) 100%)'
+        : 'linear-gradient(180deg, rgba(248, 250, 252, 1) 0%, rgba(255, 255, 255, 0.98) 50%, rgba(248, 250, 252, 0.95) 100%)';
+      
+      // Intentar aplicar el gradiente de diferentes formas
+      const applyGradient = (el: any) => {
+        if (el && el.style) {
+          el.style.backgroundImage = gradientBg;
+        }
+        // También intentar en el elemento padre si existe
+        if (el && el.parentElement && el.parentElement.style) {
+          el.parentElement.style.backgroundImage = gradientBg;
+        }
+      };
+
+      // Usar setTimeout para asegurar que el DOM esté listo
+      setTimeout(() => {
+        if (element._nativeNode) {
+          applyGradient(element._nativeNode);
+        } else if (element.getNode && element.getNode()) {
+          applyGradient(element.getNode());
+        } else if (element) {
+          applyGradient(element);
+        }
+      }, 100);
+    }
+  }, [theme]);
+
   const dynamicStyles = StyleSheet.create({
     container: {
       flex: 1,
-      backgroundColor: themeColors.surface,
+      backgroundColor: themeColors.background,
     },
     contentWrapper: {
       maxWidth: getContainerMaxWidth(),
       width: '100%',
       alignSelf: 'center',
-      ...(Platform.OS === 'web' && {
-        paddingLeft: isDesktop ? spacing.xl : spacing.md,
-        paddingRight: isDesktop ? spacing.xl : spacing.md,
-      }),
+      paddingHorizontal: isDesktop ? spacing.xl : spacing.md,
+      paddingTop: isDesktop ? spacing.lg : spacing.md,
+      paddingBottom: spacing.lg,
+    },
+    header: {
+      marginBottom: isDesktop ? spacing.lg : spacing.md,
+      paddingBottom: spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: themeColors.border,
     },
     title: {
       ...typography.h1,
       color: themeColors.primary,
       fontWeight: '700',
-      marginBottom: spacing.xs,
+      marginBottom: spacing.xs / 2,
+      fontSize: isDesktop ? 32 : 26,
     },
     subtitle: {
       ...typography.bodySmall,
       color: themeColors.textSecondary,
+      fontSize: isDesktop ? 15 : 13,
+    },
+    // Grid system usando Flexbox
+    gridContainer: {
+      flexDirection: isDesktop ? 'row' : 'column',
+      flexWrap: isDesktop ? 'wrap' : 'nowrap',
+      marginBottom: isDesktop ? spacing.lg : spacing.md,
+      ...(Platform.OS === 'web' && isDesktop && {
+        marginLeft: -spacing.md,
+        marginRight: -spacing.md,
+      }),
+    },
+    gridItem: {
+      ...(isDesktop && Platform.OS === 'web' && {
+        width: '50%',
+        paddingLeft: spacing.md,
+        paddingRight: spacing.md,
+        marginBottom: spacing.lg,
+      }),
+      ...(isDesktop && Platform.OS !== 'web' && {
+        flex: 1,
+        minWidth: '45%',
+        marginHorizontal: spacing.sm,
+        marginBottom: spacing.lg,
+      }),
+      ...(isTablet && Platform.OS === 'web' && {
+        width: '50%',
+        paddingLeft: spacing.md,
+        paddingRight: spacing.md,
+        marginBottom: spacing.md,
+      }),
+      ...(!isDesktop && !isTablet && {
+        width: '100%',
+        marginBottom: spacing.md,
+      }),
     },
     cardTitle: {
       ...typography.h4,
       color: themeColors.text,
       marginBottom: spacing.md,
       fontWeight: '600',
-      fontSize: isDesktop ? 18 : 16,
+      fontSize: isDesktop ? 20 : 18,
     },
     summaryRow: {
       flexDirection: isDesktop ? 'row' : 'column',
       justifyContent: 'space-around',
-      marginBottom: spacing.md,
       gap: isDesktop ? spacing.lg : spacing.md,
+      marginBottom: spacing.sm,
     },
     summaryItem: {
       alignItems: 'center',
       flex: isDesktop ? 1 : undefined,
       paddingVertical: isDesktop ? 0 : spacing.sm,
     },
-    gridContainer: {
-      flexDirection: isDesktop ? 'row' : 'column',
-      flexWrap: isDesktop ? 'wrap' : 'nowrap',
-      gap: isDesktop ? spacing.xl : spacing.lg,
-      ...(isDesktop && {
-        marginHorizontal: -spacing.lg,
-      }),
-    },
-    gridItem: {
-      ...(isDesktop && {
-        flex: '0 0 calc(50% - 24px)',
-        marginHorizontal: spacing.lg,
-      }),
-    },
     summaryLabel: {
       ...typography.bodySmall,
       color: themeColors.textSecondary,
       marginBottom: spacing.xs,
-      fontSize: 14,
-      fontWeight: '400',
+      fontSize: isDesktop ? 15 : 13,
+      fontWeight: '500',
     },
     summaryValue: {
-      fontSize: isDesktop ? 36 : 28,
+      fontSize: isDesktop ? 32 : 26,
       fontWeight: '700',
       letterSpacing: -0.02,
     },
@@ -123,7 +185,7 @@ export default function Dashboard() {
     },
     balanceContainer: {
       alignItems: 'center',
-      paddingTop: spacing.md,
+      paddingTop: spacing.sm,
       borderTopWidth: 1,
       borderTopColor: themeColors.border,
       marginTop: spacing.sm,
@@ -132,9 +194,11 @@ export default function Dashboard() {
       ...typography.bodySmall,
       color: themeColors.textSecondary,
       marginBottom: spacing.xs,
+      fontSize: isDesktop ? 15 : 13,
+      fontWeight: '500',
     },
     balanceValue: {
-      fontSize: isDesktop ? 36 : 32,
+      fontSize: isDesktop ? 36 : 30,
       fontWeight: '700',
       letterSpacing: -0.02,
     },
@@ -145,19 +209,16 @@ export default function Dashboard() {
       color: themeColors.secondary,
     },
     netWorthValue: {
-      fontSize: isDesktop ? 36 : 32,
+      fontSize: isDesktop ? 42 : 36,
       color: themeColors.primary,
       fontWeight: '700',
       letterSpacing: -0.02,
     },
-    availableValue: {
-      ...typography.h1,
-      fontWeight: '700',
-    },
     pendingValue: {
-      ...typography.h2,
+      fontSize: isDesktop ? 36 : 28,
       color: themeColors.secondary,
-      fontWeight: '600',
+      fontWeight: '700',
+      letterSpacing: -0.02,
     },
     categoryItem: {
       marginBottom: spacing.md,
@@ -174,7 +235,7 @@ export default function Dashboard() {
       flex: 1,
     },
     categoryIcon: {
-      fontSize: 24,
+      fontSize: isDesktop ? 26 : 24,
       marginRight: spacing.sm,
     },
     categoryName: {
@@ -182,6 +243,7 @@ export default function Dashboard() {
       color: themeColors.text,
       fontWeight: '600',
       flex: 1,
+      fontSize: isDesktop ? 16 : 14,
     },
     categoryAmount: {
       ...typography.body,
@@ -194,6 +256,50 @@ export default function Dashboard() {
       ...typography.bodySmall,
       color: themeColors.textSecondary,
       fontStyle: 'italic',
+      fontSize: isDesktop ? 13 : 12,
+    },
+    creditCardItem: {
+      marginBottom: spacing.md,
+      paddingBottom: spacing.md,
+      borderBottomWidth: 1,
+      borderBottomColor: themeColors.border,
+    },
+    creditCardItemLast: {
+      marginBottom: 0,
+      paddingBottom: 0,
+      borderBottomWidth: 0,
+    },
+    creditCardHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      marginBottom: spacing.xs,
+    },
+    creditCardColorBar: {
+      width: 4,
+      height: 40,
+      borderRadius: 2,
+      marginRight: spacing.md,
+    },
+    creditCardDetails: {
+      flex: 1,
+    },
+    creditCardName: {
+      ...typography.body,
+      color: themeColors.text,
+      fontWeight: '600',
+      fontSize: isDesktop ? 17 : 15,
+      marginBottom: spacing.xs / 2,
+    },
+    creditCardMeta: {
+      ...typography.bodySmall,
+      color: themeColors.textSecondary,
+      fontSize: isDesktop ? 13 : 12,
+      marginBottom: spacing.xs / 2,
+    },
+    creditCardAmount: {
+      fontSize: isDesktop ? 24 : 20,
+      fontWeight: '700',
+      letterSpacing: -0.01,
     },
   });
 
@@ -207,22 +313,24 @@ export default function Dashboard() {
 
   return (
     <ScrollView 
+      ref={scrollViewRef}
       style={dynamicStyles.container} 
-      contentContainerStyle={styles.content}
+      contentContainerStyle={styles.scrollContent}
       showsVerticalScrollIndicator={Platform.OS === 'web'}
     >
       <View style={dynamicStyles.contentWrapper}>
-        <View style={styles.header}>
+        {/* Header */}
+        <View style={dynamicStyles.header}>
           <Text style={dynamicStyles.title}>Dashboard</Text>
           <Text style={dynamicStyles.subtitle}>Resumen financiero</Text>
         </View>
 
-        {/* Grid layout for desktop */}
+        {/* Grid Layout - Primera fila: Resumen del Mes y Gastos por Categoría */}
         <View style={dynamicStyles.gridContainer}>
           {/* Resumen del Mes */}
           <View style={dynamicStyles.gridItem}>
-            <Card padding={getCardPadding()} marginBottom={0}>
-              <Text style={dynamicStyles.cardTitle}>{toTitleCase('Resumen del Mes')}</Text>
+            <GradientCard padding={getCardPadding()} marginBottom={0} gradient="primary">
+            <Text style={dynamicStyles.cardTitle}>{toTitleCase('Resumen del Mes')}</Text>
             <View style={dynamicStyles.summaryRow}>
               <View style={dynamicStyles.summaryItem}>
                 <Text style={dynamicStyles.summaryLabel}>Ingresos</Text>
@@ -243,118 +351,122 @@ export default function Dashboard() {
                 {formatCurrency(availableAmount)}
               </Text>
             </View>
-            </Card>
+          </GradientCard>
           </View>
 
           {/* Gastos por Categoría */}
           {categoryExpenses.length > 0 && (
             <View style={dynamicStyles.gridItem}>
-              <Card padding={getCardPadding()} marginBottom={0}>
-                <Text style={dynamicStyles.cardTitle}>{toTitleCase('Gastos por Categoría')}</Text>
-                {categoryExpenses.slice(0, 5).map((category, index) => {
-                  const categoryInfo = getCategoryInfo(category.categoryId);
-                  const percentage = totalCategoryExpenses > 0 
-                    ? (category.total / totalCategoryExpenses) * 100 
-                    : 0;
-                  
-                  return (
-                    <View key={category.categoryId || index} style={dynamicStyles.categoryItem}>
-                      <View style={dynamicStyles.categoryHeader}>
-                        <View style={dynamicStyles.categoryInfo}>
-                          <Text style={dynamicStyles.categoryIcon}>{categoryInfo.icon}</Text>
-                          <Text style={dynamicStyles.categoryName}>{category.categoryName}</Text>
-                        </View>
-                        <Text style={dynamicStyles.categoryAmount}>{formatCurrency(category.total)}</Text>
+              <GradientCard padding={getCardPadding()} marginBottom={0} gradient="subtle">
+              <Text style={dynamicStyles.cardTitle}>{toTitleCase('Gastos por Categoría')}</Text>
+              {categoryExpenses.slice(0, 6).map((category, index) => {
+                const categoryInfo = getCategoryInfo(category.categoryId);
+                const percentage = totalCategoryExpenses > 0 
+                  ? (category.total / totalCategoryExpenses) * 100 
+                  : 0;
+                
+                return (
+                  <View key={category.categoryId || index} style={dynamicStyles.categoryItem}>
+                    <View style={dynamicStyles.categoryHeader}>
+                      <View style={dynamicStyles.categoryInfo}>
+                        <Text style={dynamicStyles.categoryIcon}>{categoryInfo.icon}</Text>
+                        <Text style={dynamicStyles.categoryName}>{category.categoryName}</Text>
                       </View>
-                      <ProgressBar
-                        value={percentage}
-                        color={categoryInfo.color}
-                        height={6}
-                      />
+                      <Text style={dynamicStyles.categoryAmount}>{formatCurrency(category.total)}</Text>
                     </View>
-                  );
-                })}
-              </Card>
+                    <ProgressBar
+                      value={percentage}
+                      color={categoryInfo.color}
+                      height={isDesktop ? 8 : 6}
+                    />
+                  </View>
+                );
+              })}
+              </GradientCard>
             </View>
           )}
 
-          {/* Patrimonio Neto */}
+          {/* Segunda fila: Patrimonio Neto y otras métricas */}
           <View style={dynamicStyles.gridItem}>
-            <Card padding={getCardPadding()} marginBottom={0}>
-              <Text style={dynamicStyles.cardTitle}>{toTitleCase('Patrimonio Neto')}</Text>
-              <Text style={dynamicStyles.netWorthValue}>{formatCurrency(netWorth)}</Text>
-            </Card>
+            <GradientCard padding={getCardPadding()} marginBottom={0} gradient="accent">
+            <Text style={dynamicStyles.cardTitle}>{toTitleCase('Patrimonio Neto')}</Text>
+            <Text style={dynamicStyles.netWorthValue}>{formatCurrency(netWorth)}</Text>
+          </GradientCard>
           </View>
 
-          {/* Deuda del Mes Actual */}
-          {currentMonthDebt > 0 && (
+          {/* Deuda del Mes Actual o Pendiente Total */}
+          {currentMonthDebt > 0 ? (
             <View style={dynamicStyles.gridItem}>
-              <Card padding={getCardPadding()} marginBottom={0}>
-                <Text style={dynamicStyles.cardTitle}>{toTitleCase('Deuda del Mes Actual')}</Text>
-                <Text style={dynamicStyles.pendingValue}>{formatCurrency(currentMonthDebt)}</Text>
-                <Text style={[dynamicStyles.emptyText, { marginTop: spacing.sm, fontWeight: '400' }]}>
-                  Pagos a meses vencidos este mes
-                </Text>
-              </Card>
+              <GradientCard padding={getCardPadding()} marginBottom={0} gradient="secondary">
+              <Text style={dynamicStyles.cardTitle}>{toTitleCase('Deuda del Mes Actual')}</Text>
+              <Text style={dynamicStyles.pendingValue}>{formatCurrency(currentMonthDebt)}</Text>
+              <Text style={[dynamicStyles.emptyText, { marginTop: spacing.sm }]}>
+                Pagos a meses vencidos este mes
+              </Text>
+            </GradientCard>
             </View>
-          )}
-
-          {/* Pendiente Total a Meses */}
-          {installmentTotalPending > 0 && (
+          ) : installmentTotalPending > 0 ? (
             <View style={dynamicStyles.gridItem}>
-              <Card padding={getCardPadding()} marginBottom={0}>
-                <Text style={dynamicStyles.cardTitle}>{toTitleCase('Pendiente Total a Meses')}</Text>
-                <Text style={dynamicStyles.pendingValue}>{formatCurrency(installmentTotalPending)}</Text>
-              </Card>
+              <GradientCard padding={getCardPadding()} marginBottom={0} gradient="secondary">
+              <Text style={dynamicStyles.cardTitle}>{toTitleCase('Pendiente Total a Meses')}</Text>
+              <Text style={dynamicStyles.pendingValue}>{formatCurrency(installmentTotalPending)}</Text>
+            </GradientCard>
             </View>
-          )}
+          ) : null}
         </View>
 
-        {/* Gastos de Tarjetas de Crédito */}
+        {/* Gastos de Tarjetas de Crédito - Full Width */}
         {creditCardExpenses.length > 0 && (
-          <Card padding={getCardPadding()} marginBottom={0}>
+          <View style={{ marginTop: isDesktop ? spacing.lg : spacing.md }}>
+            <GradientCard padding={getCardPadding()} marginBottom={0} gradient="subtle">
             <Text style={dynamicStyles.cardTitle}>{toTitleCase('Gastos de Tarjetas de Crédito')}</Text>
-          {creditCardExpenses
-            .map((summary) => (
-              <View key={summary.cardId} style={dynamicStyles.categoryItem}>
-                <View style={{ flex: 1, flexDirection: 'row', alignItems: 'center' }}>
+            {creditCardExpenses.map((summary, index) => (
+              <View 
+                key={summary.cardId} 
+                style={[
+                  dynamicStyles.creditCardItem,
+                  index === creditCardExpenses.length - 1 && dynamicStyles.creditCardItemLast
+                ]}
+              >
+                <View style={dynamicStyles.creditCardHeader}>
                   <View
-                    style={{
-                      width: 4,
-                      height: 30,
-                      backgroundColor: summary.cardColor,
-                      borderRadius: 2,
-                      marginRight: spacing.sm,
-                    }}
+                    style={[
+                      dynamicStyles.creditCardColorBar,
+                      { backgroundColor: summary.cardColor }
+                    ]}
                   />
-                  <View style={{ flex: 1 }}>
-                    <Text style={dynamicStyles.categoryName}>
+                  <View style={dynamicStyles.creditCardDetails}>
+                    <Text style={dynamicStyles.creditCardName}>
                       {summary.cardName} ({summary.bank})
                     </Text>
-                    <Text style={[dynamicStyles.emptyText, { marginTop: spacing.xs }]}>
+                    <Text style={dynamicStyles.creditCardMeta}>
                       Vence: {formatDate(summary.paymentDueDate)} ({summary.daysUntilDue} días)
                     </Text>
                     {summary.normalExpenses > 0 && summary.installmentExpenses > 0 && (
-                      <Text style={[dynamicStyles.emptyText, { fontSize: 11 }]}>
+                      <Text style={[dynamicStyles.emptyText, { fontSize: isDesktop ? 12 : 11 }]}>
                         Gastos: {formatCurrency(summary.normalExpenses)} | A meses: {formatCurrency(summary.installmentExpenses)}
                       </Text>
                     )}
                   </View>
-                  <Text style={[dynamicStyles.categoryAmount, { color: summary.isDueThisMonth ? themeColors.secondary : themeColors.text }]}>
+                  <Text style={[
+                    dynamicStyles.creditCardAmount, 
+                    { color: summary.isDueThisMonth ? themeColors.secondary : themeColors.text }
+                  ]}>
                     {formatCurrency(summary.totalExpenses)}
                   </Text>
                 </View>
               </View>
             ))}
-          {totalCreditCardDebt > 0 && (
-            <View style={[dynamicStyles.balanceContainer, { marginTop: spacing.md }]}>
-              <Text style={dynamicStyles.balanceLabel}>Total a Pagar este Mes</Text>
-              <Text style={[dynamicStyles.balanceValue, { color: themeColors.secondary }]}>
-                {formatCurrency(totalCreditCardDebt)}
-              </Text>
-            </View>
-          )}
-          </Card>
+            {totalCreditCardDebt > 0 && (
+              <View style={[dynamicStyles.balanceContainer, { marginTop: spacing.md }]}>
+                <Text style={dynamicStyles.balanceLabel}>Total a Pagar este Mes</Text>
+                <Text style={[dynamicStyles.balanceValue, { color: themeColors.secondary }]}>
+                  {formatCurrency(totalCreditCardDebt)}
+                </Text>
+              </View>
+            )}
+            </GradientCard>
+          </View>
         )}
       </View>
     </ScrollView>
@@ -362,10 +474,7 @@ export default function Dashboard() {
 }
 
 const styles = StyleSheet.create({
-  content: {
-    padding: spacing.md,
-  },
-  header: {
-    marginBottom: spacing.lg,
+  scrollContent: {
+    flexGrow: 1,
   },
 });

@@ -4,6 +4,19 @@ import { createNativeStackNavigator } from '@react-navigation/native-stack';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StatusBar } from 'expo-status-bar';
 import { useTheme, getThemeColors } from '../context/ThemeContext';
+import { Platform } from 'react-native';
+import { isMobile } from '../utils/responsive';
+import ModernTabBar from '../components/navigation/ModernTabBar';
+import {
+  HomeIcon,
+  PaymentsIcon,
+  TransactionsIcon,
+  CardsIcon,
+  AnalysisIcon,
+  InstallmentsIcon,
+  AssetsIcon,
+  InvestmentsIcon,
+} from '../components/navigation/TabIcons';
 
 // Screens
 import Dashboard from '../screens/Dashboard';
@@ -19,23 +32,44 @@ import StatementUpload from '../screens/StatementUpload';
 const Stack = createNativeStackNavigator();
 const Tab = createBottomTabNavigator();
 
+// Mapeo de iconos
+const iconMap: Record<string, React.ComponentType<{ size?: number; color?: string }>> = {
+  Dashboard: HomeIcon,
+  Payments: PaymentsIcon,
+  Transactions: TransactionsIcon,
+  Installments: InstallmentsIcon,
+  CreditCards: CardsIcon,
+  Analysis: AnalysisIcon,
+  Assets: AssetsIcon,
+  Investments: InvestmentsIcon,
+};
+
 function MainTabs() {
   const { theme } = useTheme();
   const themeColors = getThemeColors(theme);
+  const isMobileDevice = isMobile || Platform.OS !== 'web';
 
   return (
     <Tab.Navigator
+      tabBar={(props) => {
+        if (isMobileDevice) {
+          return <ModernTabBar {...props} />;
+        }
+        // Para web/desktop, usar el tab bar personalizado también pero con más tabs
+        return <ModernTabBar {...props} />;
+      }}
       screenOptions={{
         headerShown: false,
         tabBarActiveTintColor: themeColors.primary,
         tabBarInactiveTintColor: themeColors.textSecondary,
-        tabBarStyle: {
-          backgroundColor: themeColors.background,
+        tabBarStyle: isMobileDevice ? { display: 'none' } : {
+          backgroundColor: themeColors.surface,
           borderTopColor: themeColors.border,
           borderTopWidth: 1,
           paddingBottom: 8,
           paddingTop: 8,
           height: 60,
+          display: 'none', // Ocultar el tab bar por defecto, usar ModernTabBar
         },
       }}
     >
@@ -44,6 +78,10 @@ function MainTabs() {
         component={Dashboard}
         options={{
           tabBarLabel: 'Inicio',
+          tabBarIcon: ({ color, size }) => {
+            const Icon = iconMap.Dashboard;
+            return <Icon color={color} size={size || 24} />;
+          },
         }}
       />
       <Tab.Screen
@@ -51,6 +89,10 @@ function MainTabs() {
         component={Payments}
         options={{
           tabBarLabel: 'Pagos',
+          tabBarIcon: ({ color, size }) => {
+            const Icon = iconMap.Payments;
+            return <Icon color={color} size={size || 24} />;
+          },
         }}
       />
       <Tab.Screen 
@@ -58,6 +100,10 @@ function MainTabs() {
         component={Transactions}
         options={{
           tabBarLabel: 'Transacciones',
+          tabBarIcon: ({ color, size }) => {
+            const Icon = iconMap.Transactions;
+            return <Icon color={color} size={size || 24} />;
+          },
         }}
       />
       <Tab.Screen 
@@ -65,6 +111,10 @@ function MainTabs() {
         component={Installments}
         options={{
           tabBarLabel: 'A Meses',
+          tabBarIcon: ({ color, size }) => {
+            const Icon = iconMap.Installments;
+            return <Icon color={color} size={size || 24} />;
+          },
         }}
       />
       <Tab.Screen 
@@ -72,6 +122,10 @@ function MainTabs() {
         component={CreditCards}
         options={{
           tabBarLabel: 'Tarjetas',
+          tabBarIcon: ({ color, size }) => {
+            const Icon = iconMap.CreditCards;
+            return <Icon color={color} size={size || 24} />;
+          },
         }}
       />
       <Tab.Screen 
@@ -79,6 +133,10 @@ function MainTabs() {
         component={ExpenseAnalysis}
         options={{
           tabBarLabel: 'Análisis',
+          tabBarIcon: ({ color, size }) => {
+            const Icon = iconMap.Analysis;
+            return <Icon color={color} size={size || 24} />;
+          },
         }}
       />
       <Tab.Screen 
@@ -86,6 +144,10 @@ function MainTabs() {
         component={Assets}
         options={{
           tabBarLabel: 'Patrimonio',
+          tabBarIcon: ({ color, size }) => {
+            const Icon = iconMap.Assets;
+            return <Icon color={color} size={size || 24} />;
+          },
         }}
       />
       <Tab.Screen 
@@ -93,11 +155,15 @@ function MainTabs() {
         component={Investments}
         options={{
           tabBarLabel: 'Inversiones',
+          tabBarIcon: ({ color, size }) => {
+            const Icon = iconMap.Investments;
+            return <Icon color={color} size={size || 24} />;
+          },
         }}
       />
-          </Tab.Navigator>
-        );
-      }
+    </Tab.Navigator>
+  );
+}
 
 export default function AppNavigator() {
   return (
@@ -118,4 +184,3 @@ export default function AppNavigator() {
     </NavigationContainer>
   );
 }
-
