@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, FlatList, TouchableOpacity, Platform } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Platform, Modal, ScrollView } from 'react-native';
 import { useAssets } from '../hooks/useAssets';
 import { useTheme, getThemeColors } from '../context/ThemeContext';
 import { useToast } from '../context/ToastContext';
@@ -10,9 +10,14 @@ import { spacing } from '../theme/spacing';
 import Card from '../components/common/Card';
 import { toTitleCase } from '../utils/textHelpers';
 import { isDesktop, getCardPadding } from '../utils/responsive';
+import AssetForm from '../components/forms/AssetForm';
+import { AssetSchema } from '../services/database/schema';
+import { parseISO, differenceInMonths } from 'date-fns';
 
 export default function Assets() {
-  const { assets, liabilities, loading, deleteAsset, deleteLiability } = useAssets();
+  const { assets, liabilities, loading, deleteAsset, deleteLiability, refresh } = useAssets();
+  const [showForm, setShowForm] = useState(false);
+  const [editingAsset, setEditingAsset] = useState<AssetSchema | null>(null);
   const { theme } = useTheme();
   const themeColors = getThemeColors(theme);
   const { showToast } = useToast();
@@ -57,9 +62,69 @@ export default function Assets() {
     }
   };
 
-  const totalAssets = calculateTotalAssets(assets);
+  // Calculate current value based on depreciation/appreciation
+  // MUST be defined before using it in totalAssets calculation
+  const calculateCurrentValue = (asset: AssetSchema): number => {
+    if (!asset.annualValueChange || !asset.purchaseDate) {
+      return asset.value;
+    }
+
+    const purchaseDate = parseISO(asset.purchaseDate);
+    const monthsSincePurchase = differenceInMonths(new Date(), purchaseDate);
+    const yearsSincePurchase = monthsSincePurchase / 12;
+
+    if (yearsSincePurchase <= 0) {
+      return asset.value;
+    }
+
+    // Apply annual change: negative = depreciation, positive = appreciation
+    const annualMultiplier = 1 + (asset.annualValueChange / 100);
+    const currentValue = asset.value * Math.pow(annualMultiplier, yearsSincePurchase);
+    
+    return Math.max(0, currentValue); // Don't allow negative values
+  };
+
+  const handleEditAsset = (asset: AssetSchema) => {
+    setEditingAsset(asset);
+    setShowForm(true);
+  };
+
+  const handleCloseForm = () => {
+    setShowForm(false);
+    setEditingAsset(null);
+    refresh();
+  };
+
+  // Calculate total assets using current values (with depreciation/appreciation)
+  const totalAssets = assets.reduce((sum, asset) => sum + calculateCurrentValue(asset), 0);
   const totalLiabilities = calculateTotalLiabilities(liabilities);
-  const netWorth = calculateNetWorth(assets, liabilities);
+  const netWorth = totalAssets - totalLiabilities;
+
+  // Get type label in Spanish
+  const getTypeLabel = (type: AssetSchema['type']): string => {
+    const labels: Record<AssetSchema['type'], string> = {
+      real_estate: 'Bien Inmueble',
+      vehicle: 'Automóvil',
+      motorcycle: 'Moto',
+      cash: 'Dinero Líquido',
+      bank: 'Cuenta Bancaria',
+      investment: 'Inversión',
+      other: 'Otro',
+    };
+    return labels[type] || type;
+  };
+
+  // Get liquidity label
+  const getLiquidityLabel = (liquidity: number): string => {
+    const labels: Record<number, string> = {
+      1: 'Muy Líquido',
+      2: 'Líquido',
+      3: 'Moderado',
+      4: 'Poco Líquido',
+      5: 'Ilíquido',
+    };
+    return labels[liquidity] || 'N/A';
+  };
 
   const dynamicStyles = StyleSheet.create({
     container: {
@@ -68,9 +133,8 @@ export default function Assets() {
     },
     header: {
       padding: spacing.lg,
+      paddingBottom: spacing.md,
       backgroundColor: themeColors.background,
-      borderBottomWidth: 1,
-      borderBottomColor: themeColors.border,
     },
     title: {
       ...typography.h1,
@@ -96,8 +160,9 @@ export default function Assets() {
       color: themeColors.secondary,
     },
     section: {
-      flex: 1,
-      padding: spacing.md,
+      padding: spacing.lg,
+      paddingTop: spacing.xl,
+      paddingBottom: spacing.xl,
     },
     sectionTitle: {
       ...typography.h4,
@@ -128,8 +193,9 @@ export default function Assets() {
     itemHeader: {
       flexDirection: 'row',
       justifyContent: 'space-between',
-      alignItems: 'center',
+      alignItems: 'flex-start',
       marginBottom: spacing.xs,
+      minHeight: 50, // Ensure enough space for value display
     },
     itemName: {
       ...typography.body,
@@ -156,27 +222,148 @@ export default function Assets() {
       padding: spacing.md,
       fontStyle: 'italic',
     },
+    addButton: {
+      backgroundColor: themeColors.primary,
+      padding: spacing.md,
+      borderRadius: 8,
+      alignItems: 'center',
+      marginTop: spacing.md,
+    },
+    addButtonText: {
+      ...typography.body,
+      color: themeColors.background,
+      fontWeight: '600',
+      fontSize: isDesktop ? 16 : 14,
+    },
+    infoCard: {
+      backgroundColor: themeColors.background,
+      padding: spacing.md,
+      borderRadius: 8,
+      marginBottom: spacing.md,
+    },
+    infoTitle: {
+      ...typography.h4,
+      color: themeColors.primary,
+      marginBottom: spacing.sm,
+      fontWeight: '600',
+    },
+    infoText: {
+      ...typography.bodySmall,
+      color: themeColors.textSecondary,
+      lineHeight: 20,
+      marginBottom: spacing.xs,
+    },
+    assetDetail: {
+      ...typography.caption,
+      color: themeColors.textSecondary,
+      marginTop: spacing.xs,
+    },
+    valueChange: {
+      ...typography.caption,
+      marginTop: spacing.xs,
+    },
+    valueChangePositive: {
+      color: themeColors.accent,
+    },
+    valueChangeNegative: {
+      color: themeColors.secondary,
+    },
+    liquidityBadge: {
+      backgroundColor: themeColors.primary + '20',
+      paddingHorizontal: spacing.sm,
+      paddingVertical: 2,
+      borderRadius: 4,
+      alignSelf: 'flex-start',
+      marginTop: spacing.xs,
+    },
+    liquidityBadgeText: {
+      ...typography.caption,
+      color: themeColors.primary,
+      fontSize: 10,
+      fontWeight: '600',
+    },
+    editButton: {
+      padding: spacing.sm,
+      justifyContent: 'center',
+      alignItems: 'center',
+      backgroundColor: themeColors.primary + '40',
+      borderRadius: 20,
+      width: 40,
+      height: 40,
+    },
   });
 
-  const renderAsset = ({ item }: { item: typeof assets[0] }) => (
-    <Card padding={getCardPadding()} marginBottom={spacing.lg}>
-      <View style={dynamicStyles.itemContent}>
-        <View style={dynamicStyles.itemHeader}>
-          <Text style={dynamicStyles.itemName}>{item.name}</Text>
-          <Text style={dynamicStyles.itemValue}>{formatCurrency(item.value)}</Text>
+  const renderAsset = ({ item }: { item: typeof assets[0] }) => {
+    const currentValue = calculateCurrentValue(item);
+    const valueChange = currentValue - item.value;
+    const valueChangePercent = item.value > 0 ? ((valueChange / item.value) * 100) : 0;
+
+    return (
+      <Card padding={getCardPadding()} marginBottom={spacing.lg}>
+        <View style={dynamicStyles.itemContent}>
+          <View style={dynamicStyles.itemHeader}>
+            <View style={{ flex: 1, marginRight: spacing.md }}>
+              <Text style={dynamicStyles.itemName}>{item.name}</Text>
+            </View>
+            <View style={{ alignItems: 'flex-end', marginRight: 100, minWidth: 120 }}>
+              <Text style={dynamicStyles.itemValue}>{formatCurrency(currentValue)}</Text>
+              {valueChange !== 0 && (
+                <Text style={[
+                  dynamicStyles.valueChange,
+                  valueChange >= 0 ? dynamicStyles.valueChangePositive : dynamicStyles.valueChangeNegative
+                ]}>
+                  {valueChange >= 0 ? '+' : ''}{formatCurrency(valueChange)} ({valueChangePercent >= 0 ? '+' : ''}{valueChangePercent.toFixed(1)}%)
+                </Text>
+              )}
+            </View>
+          </View>
+          <Text style={dynamicStyles.itemType}>{getTypeLabel(item.type)}</Text>
+          {item.annualValueChange !== null ? (
+            <Text style={dynamicStyles.assetDetail}>
+              Cambio anual automático: {item.annualValueChange >= 0 ? '+' : ''}{item.annualValueChange}%
+              {item.annualValueChange < 0 
+                ? ` (${item.type === 'cash' || item.type === 'bank' ? 'pérdida por inflación' : 'depreciación'})` 
+                : item.annualValueChange > 0 
+                ? ' (apreciación)' 
+                : ' (sin cambio)'}
+            </Text>
+          ) : item.type === 'investment' ? (
+            <Text style={dynamicStyles.assetDetail}>
+              Cambio de valor: Se calcula desde la página de Inversiones
+            </Text>
+          ) : null}
+          <View style={dynamicStyles.liquidityBadge}>
+            <Text style={dynamicStyles.liquidityBadgeText}>
+              Liquidez: {item.liquidity} - {getLiquidityLabel(item.liquidity)}
+            </Text>
+          </View>
+          {item.purchaseDate && (
+            <Text style={dynamicStyles.assetDetail}>
+              Valor original: {formatCurrency(item.value)}
+            </Text>
+          )}
         </View>
-        <Text style={dynamicStyles.itemType}>{item.type}</Text>
-      </View>
-      <TouchableOpacity
-        style={[dynamicStyles.deleteButton, { position: 'absolute', top: spacing.sm, right: spacing.sm }]}
-        onPress={() => handleDeleteAsset(item.id, item.name)}
-        activeOpacity={0.7}
-        hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-      >
-        <Text style={dynamicStyles.deleteButtonText}>🗑️</Text>
-      </TouchableOpacity>
-    </Card>
-  );
+        <View style={{ position: 'absolute', top: spacing.sm, right: spacing.sm, flexDirection: 'row', alignItems: 'center', zIndex: 10 }}>
+          <TouchableOpacity
+            style={[dynamicStyles.editButton, { marginRight: spacing.xs }]}
+            onPress={() => handleEditAsset(item)}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Text style={{ fontSize: 16 }}>✏️</Text>
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={dynamicStyles.deleteButton}
+            onPress={() => handleDeleteAsset(item.id, item.name)}
+            activeOpacity={0.7}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+          >
+            <Text style={dynamicStyles.deleteButtonText}>🗑️</Text>
+          </TouchableOpacity>
+        </View>
+      </Card>
+    );
+  };
 
   const renderLiability = ({ item }: { item: typeof liabilities[0] }) => (
     <Card padding={getCardPadding()} marginBottom={spacing.lg}>
@@ -210,47 +397,98 @@ export default function Assets() {
 
   return (
     <View style={dynamicStyles.container}>
-      <View style={dynamicStyles.header}>
-        <Text style={dynamicStyles.title}>Patrimonio</Text>
-        <Card padding={getCardPadding()} marginBottom={spacing.lg}>
-          <Text style={dynamicStyles.summaryLabel}>{toTitleCase('Patrimonio Neto')}</Text>
-          <Text style={[dynamicStyles.summaryValue, netWorth >= 0 ? dynamicStyles.positive : dynamicStyles.negative]}>
-            {formatCurrency(netWorth)}
+      <ScrollView 
+        style={{ flex: 1 }}
+        contentContainerStyle={{ 
+          paddingBottom: spacing.xl * 2,
+          flexGrow: 1,
+        }}
+        showsVerticalScrollIndicator={Platform.OS === 'web'}
+      >
+        <View style={dynamicStyles.header}>
+          <Text style={dynamicStyles.title}>Patrimonio</Text>
+          
+          {/* Info Card explaining Assets vs Liabilities */}
+          <Card padding={getCardPadding()} marginBottom={spacing.md}>
+            <Text style={dynamicStyles.infoTitle}>¿Qué son Activos y Pasivos?</Text>
+            <Text style={dynamicStyles.infoText}>
+              <Text style={{ fontWeight: '600', color: themeColors.accent }}>Activos:</Text> Son bienes y recursos que posees y que tienen valor económico. Pueden ganar valor (apreciación) o perderlo (depreciación) con el tiempo.
+            </Text>
+            <Text style={dynamicStyles.infoText}>
+              <Text style={{ fontWeight: '600', color: themeColors.secondary }}>Pasivos:</Text> Son deudas y obligaciones que debes pagar. Reducen tu patrimonio neto.
+            </Text>
+            <Text style={dynamicStyles.infoText}>
+              <Text style={{ fontWeight: '600', color: themeColors.primary }}>Patrimonio Neto:</Text> Es la diferencia entre tus activos y pasivos. Representa tu riqueza real.
+            </Text>
+          </Card>
+
+          <Card padding={getCardPadding()} marginBottom={spacing.lg}>
+            <Text style={dynamicStyles.summaryLabel}>{toTitleCase('Patrimonio Neto')}</Text>
+            <Text style={[dynamicStyles.summaryValue, netWorth >= 0 ? dynamicStyles.positive : dynamicStyles.negative]}>
+              {formatCurrency(netWorth)}
+            </Text>
+          </Card>
+
+          <TouchableOpacity
+            style={dynamicStyles.addButton}
+            onPress={() => {
+              setEditingAsset(null);
+              setShowForm(true);
+            }}
+          >
+            <Text style={dynamicStyles.addButtonText}>+ Agregar Activo</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={dynamicStyles.section}>
+          <Text style={dynamicStyles.sectionTitle}>Activos ({formatCurrency(totalAssets)})</Text>
+          <Text style={[dynamicStyles.assetDetail, { marginBottom: spacing.md, fontSize: 12, fontStyle: 'italic' }]}>
+            * Valores mostrados incluyen depreciación/apreciación calculada
           </Text>
-        </Card>
-      </View>
+          {assets.length === 0 ? (
+            <Card padding={getCardPadding()} marginBottom={spacing.lg}>
+              <Text style={dynamicStyles.emptyText}>No hay activos registrados</Text>
+            </Card>
+          ) : (
+            assets.map((item) => (
+              <View key={item.id}>
+                {renderAsset({ item })}
+              </View>
+            ))
+          )}
+        </View>
 
-      <View style={dynamicStyles.section}>
-        <Text style={dynamicStyles.sectionTitle}>Activos ({formatCurrency(totalAssets)})</Text>
-        <FlatList
-          data={assets}
-          renderItem={renderAsset}
-          keyExtractor={item => item.id}
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={
-            <Text style={dynamicStyles.emptyText}>No hay activos registrados</Text>
-          }
-        />
-      </View>
+        <View style={dynamicStyles.section}>
+          <Text style={dynamicStyles.sectionTitle}>Pasivos ({formatCurrency(totalLiabilities)})</Text>
+          {liabilities.length === 0 ? (
+            <Card padding={getCardPadding()} marginBottom={spacing.lg}>
+              <Text style={dynamicStyles.emptyText}>No hay pasivos registrados</Text>
+            </Card>
+          ) : (
+            liabilities.map((item) => (
+              <View key={item.id}>
+                {renderLiability({ item })}
+              </View>
+            ))
+          )}
+        </View>
+      </ScrollView>
 
-      <View style={dynamicStyles.section}>
-        <Text style={dynamicStyles.sectionTitle}>Pasivos ({formatCurrency(totalLiabilities)})</Text>
-        <FlatList
-          data={liabilities}
-          renderItem={renderLiability}
-          keyExtractor={item => item.id}
-          contentContainerStyle={styles.listContent}
-          ListEmptyComponent={
-            <Text style={dynamicStyles.emptyText}>No hay pasivos registrados</Text>
-          }
+      <Modal
+        visible={showForm}
+        animationType="slide"
+        presentationStyle="pageSheet"
+        onRequestClose={handleCloseForm}
+      >
+        <AssetForm
+          onClose={handleCloseForm}
+          asset={editingAsset || undefined}
         />
-      </View>
+      </Modal>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  listContent: {
-    paddingBottom: spacing.md,
-  },
+  // Removed - no longer using FlatList
 });

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, ScrollView, Platform, TouchableOpacity } from 'react-native';
 import { usePayments } from '../hooks/usePayments';
 import { useTheme, getThemeColors } from '../context/ThemeContext';
@@ -16,6 +16,12 @@ import { useTransactions } from '../hooks/useTransactions';
 import { getMonthlyIncome } from '../services/calculations/biweeklyAvailability';
 import { InstallmentPaymentSchema } from '../services/database/schema';
 import { parseISO, startOfMonth, endOfMonth, isWithinInterval } from 'date-fns';
+import { 
+  getPaidCreditCardPayments, 
+  savePaidCreditCardPayments,
+  getPaidRecurringExpensePayments,
+  savePaidRecurringExpensePayments
+} from '../utils/paymentStorage';
 
 export default function Payments() {
   const [selectedMonth, setSelectedMonth] = useState(new Date());
@@ -29,20 +35,23 @@ export default function Payments() {
   const { showToast } = useToast();
   
   // Track paid credit card payments
-  const [paidCreditCardPayments, setPaidCreditCardPayments] = useState<Set<string>>(() => {
-    // Load from localStorage on mount
-    if (Platform.OS === 'web') {
-      try {
-        const stored = localStorage.getItem('paidCreditCardPayments');
-        return stored ? new Set(JSON.parse(stored)) : new Set();
-      } catch {
-        return new Set();
-      }
-    }
-    return new Set();
-  });
+  const [paidCreditCardPayments, setPaidCreditCardPayments] = useState<Set<string>>(new Set());
   
-  const handleMarkCreditCardPayment = (paymentKey: string) => {
+  // Track paid recurring expense payments
+  const [paidRecurringExpensePayments, setPaidRecurringExpensePayments] = useState<Set<string>>(new Set());
+
+  // Load paid payments on mount
+  useEffect(() => {
+    const loadPaidPayments = async () => {
+      const creditCardPaid = await getPaidCreditCardPayments();
+      const recurringPaid = await getPaidRecurringExpensePayments();
+      setPaidCreditCardPayments(creditCardPaid);
+      setPaidRecurringExpensePayments(recurringPaid);
+    };
+    loadPaidPayments();
+  }, []);
+  
+  const handleMarkCreditCardPayment = async (paymentKey: string) => {
     const newPaidPayments = new Set(paidCreditCardPayments);
     if (newPaidPayments.has(paymentKey)) {
       newPaidPayments.delete(paymentKey);
@@ -50,9 +59,19 @@ export default function Payments() {
       newPaidPayments.add(paymentKey);
     }
     setPaidCreditCardPayments(newPaidPayments);
-    if (Platform.OS === 'web') {
-      localStorage.setItem('paidCreditCardPayments', JSON.stringify(Array.from(newPaidPayments)));
+    await savePaidCreditCardPayments(newPaidPayments);
+    showToast(newPaidPayments.has(paymentKey) ? 'Pago marcado como realizado' : 'Pago marcado como pendiente', 'success');
+  };
+
+  const handleMarkRecurringExpensePayment = async (paymentKey: string) => {
+    const newPaidPayments = new Set(paidRecurringExpensePayments);
+    if (newPaidPayments.has(paymentKey)) {
+      newPaidPayments.delete(paymentKey);
+    } else {
+      newPaidPayments.add(paymentKey);
     }
+    setPaidRecurringExpensePayments(newPaidPayments);
+    await savePaidRecurringExpensePayments(newPaidPayments);
     showToast(newPaidPayments.has(paymentKey) ? 'Pago marcado como realizado' : 'Pago marcado como pendiente', 'success');
   };
 
@@ -239,17 +258,38 @@ export default function Payments() {
         {(() => {
           const monthStart = startOfMonth(selectedMonth);
           const monthEnd = endOfMonth(selectedMonth);
-          const monthPayments = payments.filter(payment => {
+          
+          // Calculate paid installment payments
+          const monthInstallmentPayments = payments.filter(payment => {
             const dueDate = parseISO(payment.dueDate);
             return isWithinInterval(dueDate, { start: monthStart, end: monthEnd });
           });
           
-          const monthPaidTotal = monthPayments
+          const paidInstallmentTotal = monthInstallmentPayments
             .filter(p => p.status === 'paid')
             .reduce((sum, p) => sum + p.amount, 0);
           
+          // Calculate paid credit card payments
+          const paidCreditCardTotal = paymentSummary.creditCardPayments
+            .filter(payment => {
+              const paymentKey = `${payment.cardId}-${payment.billingCycleStart.toISOString().split('T')[0]}-${payment.dueDate.toISOString().split('T')[0]}`;
+              return paidCreditCardPayments.has(paymentKey);
+            })
+            .reduce((sum, p) => sum + p.amount, 0);
+          
+          // Calculate paid recurring expense payments
+          const paidRecurringTotal = paymentSummary.recurringExpensePayments
+            .filter(payment => {
+              const paymentKey = `${payment.expenseId}-${payment.dueDate.toISOString().split('T')[0]}`;
+              return paidRecurringExpensePayments.has(paymentKey);
+            })
+            .reduce((sum, p) => sum + p.amount, 0);
+          
+          // Total of all paid payments
+          const totalPaidPayments = paidInstallmentTotal + paidCreditCardTotal + paidRecurringTotal;
+          
           const monthlyIncome = getMonthlyIncome(transactions, selectedYear, selectedMonthNum);
-          const availableAfterPaidPayments = monthlyIncome - monthPaidTotal;
+          const availableAfterPaidPayments = monthlyIncome - totalPaidPayments;
 
           return (
             <>
@@ -265,7 +305,7 @@ export default function Payments() {
                 <View style={dynamicStyles.summaryRow}>
                   <Text style={dynamicStyles.summaryLabel}>Pagos pagados:</Text>
                   <Text style={[dynamicStyles.summaryValue, dynamicStyles.expense]}>
-                    -{formatCurrency(monthPaidTotal)}
+                    -{formatCurrency(totalPaidPayments)}
                   </Text>
                 </View>
                 <View style={dynamicStyles.balanceContainer}>
@@ -508,40 +548,72 @@ export default function Payments() {
               return labels[type] || 'Otro';
             };
             
+            // Create a unique key for this payment based on expense ID and due date
+            const paymentKey = `${payment.expenseId}-${payment.dueDate.toISOString().split('T')[0]}`;
+            const isPaid = paidRecurringExpensePayments.has(paymentKey);
+            
             return (
-              <View
+              <TouchableOpacity
                 key={payment.expenseId}
-                style={[dynamicStyles.paymentItem, { borderLeftColor: themeColors.secondary }]}
+                style={[
+                  dynamicStyles.paymentItem,
+                  { borderLeftColor: themeColors.secondary },
+                  isPaid && { backgroundColor: themeColors.accent + '20', opacity: 0.7 }
+                ]}
+                onPress={() => handleMarkRecurringExpensePayment(paymentKey)}
+                activeOpacity={0.7}
               >
                 <View style={dynamicStyles.paymentInfo}>
-                  <Text style={dynamicStyles.paymentName}>
-                    {payment.expenseName}
-                  </Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: spacing.xs }}>
+                    <Text style={dynamicStyles.paymentName}>
+                      {payment.expenseName}
+                    </Text>
+                    {isPaid && (
+                      <View style={{
+                        marginLeft: spacing.sm,
+                        backgroundColor: themeColors.accent,
+                        paddingHorizontal: spacing.xs,
+                        paddingVertical: 2,
+                        borderRadius: 4,
+                      }}>
+                        <Text style={{ ...typography.caption, color: themeColors.background, fontSize: 10, fontWeight: '600' }}>
+                          PAGADO
+                        </Text>
+                      </View>
+                    )}
+                  </View>
                   <Text style={dynamicStyles.paymentDetails}>
                     {getTypeLabel(payment.expenseType)} • Vence: {formatDate(payment.dueDate.toISOString())}
                   </Text>
-                  <View
-                    style={[
-                      dynamicStyles.daysBadge,
-                      payment.daysUntilDue <= 7 && dynamicStyles.urgentBadge,
-                    ]}
-                  >
-                    <Text
+                  {!isPaid && (
+                    <View
                       style={[
-                        dynamicStyles.daysBadgeText,
-                        payment.daysUntilDue <= 7 && dynamicStyles.urgentBadgeText,
+                        dynamicStyles.daysBadge,
+                        payment.daysUntilDue <= 7 && dynamicStyles.urgentBadge,
                       ]}
                     >
-                      {payment.daysUntilDue > 0
-                        ? `${payment.daysUntilDue} días restantes`
-                        : payment.daysUntilDue === 0
-                        ? 'Vence hoy'
-                        : `Vencido hace ${Math.abs(payment.daysUntilDue)} días`}
-                    </Text>
-                  </View>
+                      <Text
+                        style={[
+                          dynamicStyles.daysBadgeText,
+                          payment.daysUntilDue <= 7 && dynamicStyles.urgentBadgeText,
+                        ]}
+                      >
+                        {payment.daysUntilDue > 0
+                          ? `${payment.daysUntilDue} días restantes`
+                          : payment.daysUntilDue === 0
+                          ? 'Vence hoy'
+                          : `Vencido hace ${Math.abs(payment.daysUntilDue)} días`}
+                      </Text>
+                    </View>
+                  )}
                 </View>
-                <Text style={dynamicStyles.paymentAmount}>{formatCurrency(payment.amount)}</Text>
-              </View>
+                <Text style={[
+                  dynamicStyles.paymentAmount,
+                  isPaid && { color: themeColors.textSecondary, textDecorationLine: 'line-through' }
+                ]}>
+                  {formatCurrency(payment.amount)}
+                </Text>
+              </TouchableOpacity>
             );
           })}
           </Card>

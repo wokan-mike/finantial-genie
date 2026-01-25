@@ -16,7 +16,60 @@ export const useAssets = () => {
         db.assets.getAll(),
         db.liabilities.getAll(),
       ]);
-      setAssets(assetsData);
+      
+      // Migrate old assets to new schema with default values
+      const assetsToMigrate: Array<{ id: string; updates: Partial<AssetSchema> }> = [];
+      const migratedAssets = assetsData.map(asset => {
+        // If asset doesn't have new fields, add defaults based on type
+        if (asset.liquidity === undefined || asset.annualValueChange === undefined || asset.purchaseDate === undefined) {
+          // Determine defaults based on type (matching AssetForm defaults)
+          let defaultLiquidity: 1 | 2 | 3 | 4 | 5 = 3;
+          let defaultAnnualChange: number | null = 0;
+          
+          if (asset.type === 'cash' || asset.type === 'bank') {
+            defaultLiquidity = 1;
+            defaultAnnualChange = -5; // Inflation loss
+          } else if (asset.type === 'real_estate') {
+            defaultLiquidity = 5;
+            defaultAnnualChange = 0;
+          } else if (asset.type === 'vehicle') {
+            defaultLiquidity = 4;
+            defaultAnnualChange = -15; // Depreciation
+          } else if (asset.type === 'motorcycle') {
+            defaultLiquidity = 4;
+            defaultAnnualChange = -20; // Depreciation
+          } else if (asset.type === 'investment') {
+            defaultLiquidity = 2;
+            defaultAnnualChange = null; // Should come from investments page
+          } else if (asset.type === 'other') {
+            defaultLiquidity = 3;
+            defaultAnnualChange = 0;
+          }
+          
+          const updates: Partial<AssetSchema> = {
+            liquidity: asset.liquidity ?? defaultLiquidity,
+            annualValueChange: asset.annualValueChange ?? defaultAnnualChange,
+            purchaseDate: asset.purchaseDate ?? null,
+          };
+          
+          assetsToMigrate.push({ id: asset.id, updates });
+          
+          return {
+            ...asset,
+            ...updates,
+          };
+        }
+        return asset;
+      });
+      
+      // Update assets in database if needed
+      if (assetsToMigrate.length > 0) {
+        Promise.all(
+          assetsToMigrate.map(({ id, updates }) => db.assets.update(id, updates))
+        ).catch(console.error);
+      }
+      
+      setAssets(migratedAssets);
       setLiabilities(liabilitiesData);
       setError(null);
     } catch (err) {

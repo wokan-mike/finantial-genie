@@ -33,22 +33,43 @@ export const analyzeExpensesByCategory = (
 
   // Group by category
   const categoryMap = new Map<string, { total: number; count: number; name: string }>();
+  const NO_CATEGORY_KEY = '__no_category__';
 
   for (const txn of filteredTransactions) {
-    for (const tagId of txn.tags) {
-      const category = categories.find(cat => cat.id === tagId);
-      const categoryName = category?.name || 'Sin categoría';
-
-      const existing = categoryMap.get(tagId) || { total: 0, count: 0, name: categoryName };
+    // Check if transaction has tags
+    if (!txn.tags || txn.tags.length === 0) {
+      // Transaction has no categories - group under "Sin categoría"
+      const existing = categoryMap.get(NO_CATEGORY_KEY) || { total: 0, count: 0, name: 'Sin categoría' };
       existing.total += txn.amount;
       existing.count += 1;
-      categoryMap.set(tagId, existing);
+      categoryMap.set(NO_CATEGORY_KEY, existing);
+    } else {
+      // Transaction has tags - find valid categories
+      const validCategories = txn.tags
+        .map(tagId => categories.find(cat => cat.id === tagId))
+        .filter((cat): cat is { id: string; name: string } => cat !== undefined);
+      
+      if (validCategories.length > 0) {
+        // Transaction has at least one valid category - count it in each valid category
+        for (const category of validCategories) {
+          const existing = categoryMap.get(category.id) || { total: 0, count: 0, name: category.name };
+          existing.total += txn.amount;
+          existing.count += 1;
+          categoryMap.set(category.id, existing);
+        }
+      } else {
+        // All tags are invalid or don't exist - group under "Sin categoría" (count once)
+        const existing = categoryMap.get(NO_CATEGORY_KEY) || { total: 0, count: 0, name: 'Sin categoría' };
+        existing.total += txn.amount;
+        existing.count += 1;
+        categoryMap.set(NO_CATEGORY_KEY, existing);
+      }
     }
   }
 
   // Convert to array and calculate percentages
   const results: CategoryExpense[] = Array.from(categoryMap.entries()).map(([categoryId, data]) => ({
-    categoryId,
+    categoryId: categoryId === NO_CATEGORY_KEY ? NO_CATEGORY_KEY : categoryId,
     categoryName: data.name,
     total: data.total,
     percentage: totalExpenses > 0 ? (data.total / totalExpenses) * 100 : 0,

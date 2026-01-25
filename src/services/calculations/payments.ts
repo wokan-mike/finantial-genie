@@ -161,8 +161,8 @@ export const calculatePaymentsForMonth = (
     
     const totalExpenses = normalExpenses + installmentExpenses;
     
-    // Calculate days until due based on reference date (selected month)
-    const daysUntilDue = Math.ceil((paymentDueDate.getTime() - referenceDate.getTime()) / (1000 * 60 * 60 * 24));
+    // Calculate days until due based on today's date (not the selected month reference)
+    const daysUntilDue = Math.ceil((paymentDueDate.getTime() - today.getTime()) / (1000 * 60 * 60 * 24));
     
     // Include payment if it has expenses OR if the payment is due in the selected month
     if (totalExpenses > 0 || isWithinInterval(paymentDueDate, { start: monthStart, end: monthEnd })) {

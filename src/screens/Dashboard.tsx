@@ -442,9 +442,15 @@ export default function Dashboard() {
                     <Text style={dynamicStyles.creditCardMeta}>
                       Vence: {formatDate(summary.paymentDueDate)} ({summary.daysUntilDue} días)
                     </Text>
-                    {summary.normalExpenses > 0 && summary.installmentExpenses > 0 && (
+                    {summary.totalExpenses > 0 && (
                       <Text style={[dynamicStyles.emptyText, { fontSize: isDesktop ? 12 : 11 }]}>
-                        Gastos: {formatCurrency(summary.normalExpenses)} | A meses: {formatCurrency(summary.installmentExpenses)}
+                        {summary.normalExpenses > 0 && summary.installmentExpenses > 0 ? (
+                          <>Gastos: {formatCurrency(summary.normalExpenses)} | A meses: {formatCurrency(summary.installmentExpenses)}</>
+                        ) : summary.normalExpenses > 0 ? (
+                          <>Gastos: {formatCurrency(summary.normalExpenses)}</>
+                        ) : summary.installmentExpenses > 0 ? (
+                          <>A meses: {formatCurrency(summary.installmentExpenses)}</>
+                        ) : null}
                       </Text>
                     )}
                   </View>

@@ -61,10 +61,17 @@ export interface InstallmentPaymentSchema {
 
 export interface AssetSchema {
   id: string;
-  type: 'cash' | 'bank' | 'investment' | 'other';
+  type: 'real_estate' | 'vehicle' | 'motorcycle' | 'cash' | 'bank' | 'investment' | 'other';
   name: string;
   value: number;
   currency: string;
+  // Value change over time: positive = appreciation (gains value), negative = depreciation (loses value)
+  // Expressed as annual percentage (e.g., -10 means 10% depreciation per year, 5 means 5% appreciation per year)
+  annualValueChange: number | null; // Percentage per year
+  // Liquidity: how easily the asset can be converted to cash
+  // 1 = highly liquid (cash), 5 = illiquid (real estate)
+  liquidity: 1 | 2 | 3 | 4 | 5;
+  purchaseDate: string | null; // ISO date string - when the asset was acquired
   notes: string | null;
   createdAt: string;
   updatedAt: string;
